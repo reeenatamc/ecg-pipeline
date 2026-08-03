@@ -88,6 +88,44 @@ ECGFounder binarizes with per-class thresholds derived on PTB-XL. Pass `--thresh
 (a `{label: threshold}` JSON) or `--threshold` to get a flagged list; without one you get
 a ranking only.
 
+## Quality gating
+
+A digitizer that fails still produces a CSV, and ECGFounder will happily score noise at
+0.99. Every result therefore carries `degraded`, `warnings`, `digitization`, and
+`signal_quality`. **Read `degraded` before `topk`.**
+
+Two independent gates, both needed — neither catches the other's failures:
+
+1. **Layout** (from the digitizer's `digitization_metadata.csv`). When no layout matches,
+   the digitizer emits `lead_layout: "Unknown layout"`, canonicalization returns an
+   all-NaN frame, and whatever signal survives was recovered by rhythm-strip cosine
+   matching — so *which trace is which lead* is a guess. Always flagged.
+2. **Coverage** (from the signal itself). The rhythm pathway is only meaningful when a
+   lead was printed at full length. If none reaches `--coverage-min`, the result is built
+   from a single ~2.5 s fragment; that is flagged rather than passed off as an ensemble.
+
+Observed on the sample ECGs:
+
+| Input | Layout | Leads | Verdict |
+|---|---|---|---|
+| clean scan | `standard_3x4_with_r3` | 12/12, rhythm II/V1/V5 | clean — `SINUS RHYTHM 0.99` |
+| low-res scan | `standard_3x4_with_r1` | none ≥60% | `DEGRADED` — fell back to V2 alone |
+| unmatched layout | `Unknown layout` | 3/12 | `DEGRADED` — lead identity unreliable |
+
+The second case passes the layout gate and the third passes the coverage gate, which is
+why both exist.
+
+In a backend, use `--fail-on-degraded` (exit code 2):
+
+```bash
+python -m ecg_pipeline --images in/ --out out/ --fail-on-degraded
+```
+
+`matching_cost` is reported but **not thresholded by default**. It is an unbounded
+residual (mean grid distance × a scaling factor), not a normalized score, and `1.0` is a
+hardcoded sentinel for "no layout matched" rather than a measurement. Calibrate on your
+own data before enabling `--max-matching-cost`.
+
 ## Layout
 
 ```

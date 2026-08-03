@@ -185,14 +185,64 @@ def _lead_windows(canonical: npt.NDArray[np.float64], names: list[str]) -> dict[
     return info
 
 
-def select_rhythm_leads(canonical: npt.NDArray[np.float64], names: list[str], coverage_min: float = 0.6) -> list[str]:
-    """Full-length leads usable as rhythm strips, preferred order; else best-covered single lead."""
+def assess_quality(
+    canonical: npt.NDArray[np.float64], names: list[str], coverage_min: float = 0.6
+) -> dict[str, Any]:
+    """Single source of truth for which leads are usable and how much to trust them.
+
+    The rhythm pathway is only meaningful when at least one lead was printed at full
+    length. When none was, the caller still gets an answer -- built from the single
+    best-covered lead, which on a 3x4 layout is a ~2.5 s fragment. That is a materially
+    weaker basis for a rhythm call, so it is reported as ``degraded`` rather than
+    silently passed off as a rhythm-strip ensemble.
+    """
     info = _lead_windows(canonical, names)
     full = [l for l in CANONICAL_LEADS if l in info and info[l]["coverage"] >= coverage_min]
     ordered = [l for l in PREFERRED_RHYTHM_LEADS if l in full] + [l for l in full if l not in PREFERRED_RHYTHM_LEADS]
+
+    warnings: list[str] = []
+    degraded = False
     if ordered:
-        return ordered
-    return [max(info, key=lambda l: info[l]["coverage"])] if info else []
+        selected = ordered
+    elif info:
+        selected = [max(info, key=lambda l: info[l]["coverage"])]
+        degraded = True
+        pct = 100 * info[selected[0]]["coverage"]
+        warnings.append(
+            f"No lead reached {100 * coverage_min:.0f}% coverage, so no full-length rhythm strip was "
+            f"available. Fell back to the single best-covered lead ({selected[0]}, {pct:.0f}%). "
+            f"Treat rhythm and rate findings as unreliable."
+        )
+    else:
+        selected = []
+        degraded = True
+        warnings.append("No leads were recovered from the digitized signal.")
+
+    usable = [l for l in info if info[l]["coverage"] > 0]
+    if info and len(usable) < 6:
+        warnings.append(
+            f"Only {len(usable)} of 12 leads carry any signal ({', '.join(usable) or 'none'}). "
+            f"The digitization is likely incomplete."
+        )
+
+    return {
+        "coverage": {l: round(info[l]["coverage"], 3) for l in info},
+        "leads_with_signal": usable,
+        "full_length_leads": ordered,
+        "selected_leads": selected,
+        "coverage_min": coverage_min,
+        "degraded": degraded,
+        "warnings": warnings,
+    }
+
+
+def select_rhythm_leads(canonical: npt.NDArray[np.float64], names: list[str], coverage_min: float = 0.6) -> list[str]:
+    """Full-length leads usable as rhythm strips, preferred order; else best-covered single lead.
+
+    Thin wrapper over ``assess_quality``; use that directly when you need to know whether
+    the selection was degraded.
+    """
+    return list(assess_quality(canonical, names, coverage_min)["selected_leads"])
 
 
 def build_12lead_montage(
@@ -347,6 +397,15 @@ def interpret_csv(
 ) -> dict[str, Any]:
     tasks = load_tasks()
     canonical, names = load_canonical_csv(csv_path)
+    quality = assess_quality(canonical, names, coverage_min)
+    warnings: list[str] = list(quality["warnings"])
+
+    if pathway == "12lead":
+        warnings.append(
+            "The 12lead pathway is EXPERIMENTAL. A 3x4 layout records its columns at "
+            "different times, so the montage is phase-misaligned and this pathway "
+            "over-calls pathology. Prefer 'rhythm'."
+        )
 
     if pathway == "rhythm":
         ckpt = ckpt or DEFAULT_1LEAD_CKPT
@@ -385,6 +444,9 @@ def interpret_csv(
         **detail,
         "summary": summary_probs(probs, tasks),
         "topk": top_k(probs, tasks, k),
+        "signal_quality": quality,
+        "degraded": bool(quality["degraded"]),
+        "warnings": warnings,
     }
     if thresholds is not None or flat_threshold is not None:
         result["flagged"] = flagged_findings(probs, tasks, thresholds, flat_threshold)
@@ -403,6 +465,12 @@ def _print_report(res: dict[str, Any]) -> None:
     else:
         head = f"12-lead 2.5s montage  |  {res['montage']['target_len']} samples/lead  |  EXPERIMENTAL"
     print(f"\nECGFounder [{res['pathway']}, 150-class]  |  {head}")
+    if res.get("warnings"):
+        banner = "DEGRADED" if res.get("degraded") else "CAUTION"
+        print(f"\n  !! {banner} !!")
+        for w in res["warnings"]:
+            print(f"   - {w}")
+        print()
     if res.get("summary"):
         print("  summary: " + "   ".join(f"{lab}={p:.2f}" for lab, p in res["summary"].items()))
     print("-" * 68)
