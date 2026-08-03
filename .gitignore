@@ -1,0 +1,29 @@
+# Model weights - downloaded via scripts/download_weights.sh, far too large for git
+weights/
+*.pth
+*.pt
+
+# Pipeline inputs and outputs
+input/
+output/
+out/
+*_timeseries_canonical.csv
+*_interpretation.json
+
+# Patient data must never be committed
+data/
+*.dcm
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

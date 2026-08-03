@@ -1,0 +1,36 @@
+--- a/src/digitize.py
++++ b/src/digitize.py
+@@ -51,12 +51,13 @@
+ 
+ 
+ def decode_and_prepare_image(file_path: str) -> torch.Tensor:
+-    image: torch.Tensor = decode_image(file_path, mode="RGB")
+-    C, H, W = image.shape
+-    if C == 1:
+-        image = image.expand(3, H, W)
+-    elif C == 4:
+-        image = image[:3]
++    # torchvision 0.17.2 (the last build available for Intel macOS) does not accept a
++    # file path or a string ``mode`` in ``decode_image``, so load via PIL instead.
++    # Returns a uint8 CHW tensor with a leading batch dim, matching prior behaviour.
++    from PIL import Image
++
++    pil_image = Image.open(file_path).convert("RGB")
++    image: torch.Tensor = torch.from_numpy(np.array(pil_image)).permute(2, 0, 1).contiguous()
+     return image.unsqueeze(0)
+ 
+ 
+--- a/src/utils.py
++++ b/src/utils.py
+@@ -8,7 +8,10 @@
+ import matplotlib.pyplot as plt
+ import torch
+ import torch.optim.optimizer
+-from ray.tune import Stopper
++try:
++    from ray.tune import Stopper
++except ModuleNotFoundError:  # ray is only needed for training, not inference
++    Stopper = object  # type: ignore[assignment, misc]
+ from torch import nn
+ from torch.utils.data import DataLoader
+ from yacs.config import CfgNode as CN

@@ -1,0 +1,9 @@
+limb_aug_right_3x3:
+  description: "3x3: limb (I,II,III), augmented (aVR,aVL,aVF), right precordial (V4R,V5R,V6R) -> V4,V5,V6 slots"
+  layout: {rows: 3, cols: 3}
+  leads:
+    - ["I", "aVR", "V4"]
+    - ["II", "aVL", "V5"]
+    - ["III", "aVF", "V6"]
+  rhythm_leads: []
+  total_rows: 3

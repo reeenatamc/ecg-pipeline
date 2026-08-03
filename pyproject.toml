@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ecg-pipeline"
+version = "0.1.0"
+description = "ECG image -> digitized time series -> diagnostic interpretation"
+requires-python = ">=3.10"
+dependencies = ["numpy", "torch", "matplotlib"]
+
+[project.scripts]
+ecg-pipeline = "ecg_pipeline.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ecg_pipeline*"]
+
+[tool.setuptools.package-data]
+"ecg_pipeline.interpret" = ["tasks.txt"]
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["net1d", "matplotlib.*"]
+ignore_missing_imports = true

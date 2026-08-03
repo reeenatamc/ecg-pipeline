@@ -1,0 +1,69 @@
+THIRD-PARTY NOTICES
+===================
+
+This repository depends on third-party work under two different licences. The
+distinction between them determines how this repository may be licensed, so read
+this before vendoring, copying, or relocating any upstream code.
+
+
+1. Open-ECG-Digitizer  --  CC BY-SA 4.0  --  NOT bundled, invoked only
+--------------------------------------------------------------------
+    Ahus-AIM / Open-ECG-Digitizer
+    https://github.com/Ahus-AIM/Open-ECG-Digitizer
+    Licence: Creative Commons Attribution-ShareAlike 4.0 International
+             https://creativecommons.org/licenses/by-sa/4.0/
+
+CC BY-SA 4.0 is a copyleft licence: any "Adapted Material" that is shared must itself
+be released under CC BY-SA 4.0 or a compatible licence.
+
+No source code from Open-ECG-Digitizer is copied into this repository. It is executed
+as a separate program by `ecg_pipeline/digitizer.py`, against a checkout the user
+supplies (`$OPEN_ECG_DIGITIZER_HOME` or `scripts/setup_digitizer.sh`). This repository
+therefore contains no Adapted Material and the ShareAlike term is not triggered.
+
+Two consequences worth stating plainly:
+
+  * Running a program is not adapting it, and CC BY-SA 4.0 has no network/SaaS clause
+    (unlike AGPL). Deploying the digitizer behind a backend service does not trigger
+    ShareAlike.
+  * The digitizer's OUTPUT (the digitized time series) is not Adapted Material. Data
+    produced by running the software is unencumbered.
+
+To keep this true: do not copy upstream source into `ecg_pipeline/`. Behaviour changes
+belong in `configs/` (via overrides) or `patches/` (applied to the external checkout).
+
+`patches/0001-digitizer-portability.patch` IS a modification of CC BY-SA 4.0 material.
+It is kept as a standalone patch, is licensed CC BY-SA 4.0 in its own right, and is
+never applied to files inside this repository. See `patches/README.md`.
+
+MANDATORY CITATION. The upstream README requires citation in research use:
+
+    @article{stenhede_digitizing_2026,
+      title   = {Digitizing electrocardiograms from images},
+      journal = {npj Digital Medicine},
+      year    = {2026},
+      doi     = {10.1038/s41746-025-02327-1},
+      url     = {https://doi.org/10.1038/s41746-025-02327-1}
+    }
+
+
+2. ECGFounder  --  MIT  --  partially bundled
+---------------------------------------------
+    PKUDigitalHealth / ECGFounder
+    https://github.com/PKUDigitalHealth/ECGFounder
+    Model weights: https://huggingface.co/PKUDigitalHealth/ECGFounder
+    Licence: MIT (code and published weights)
+
+`ecg_pipeline/interpret/net1d.py` is vendored verbatim from ECGFounder.
+`ecg_pipeline/interpret/tasks.txt` is the ECGFounder diagnostic class list.
+The `.pth` checkpoints are downloaded at setup time and are not stored in git.
+
+MIT is permissive: bundling, modification, and commercial use are allowed provided the
+copyright notice and permission notice are retained. Retain them.
+
+Upstream requires that the preprocessing in its `dataset.py` (filtering, z-score
+normalization) be followed when using the pretrained weights; `interpret_ecg.py`
+implements this.
+
+
+Everything else in this repository is original work; see LICENSE.
