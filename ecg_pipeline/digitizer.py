@@ -58,19 +58,27 @@ def digitizer_home() -> Path:
     Resolution order: ``$OPEN_ECG_DIGITIZER_HOME``, then a sibling ``Open-ECG-Digitizer``
     directory next to this repo. Raises ``DigitizerNotFound`` with remediation steps.
     """
-    candidates: list[Path] = []
+    # An explicitly set env var is honoured strictly: falling back to a different
+    # checkout would silently attribute results to the wrong digitizer version, which
+    # matters when a specific checkout has been validated.
     env_value = os.environ.get(ENV_HOME)
     if env_value:
-        candidates.append(Path(env_value).expanduser())
-    candidates.append(REPO_ROOT.parent / "Open-ECG-Digitizer")
-
-    for candidate in candidates:
+        candidate = Path(env_value).expanduser()
         if (candidate / "src" / "digitize.py").is_file():
             return candidate.resolve()
+        raise DigitizerNotFound(
+            f"{ENV_HOME} is set to {candidate}, but that is not an Open-ECG-Digitizer "
+            f"checkout (no src/digitize.py there).\n\n"
+            f"Point it at a real checkout, unset it to use the default sibling location, "
+            f"or run: bash scripts/setup_digitizer.sh"
+        )
 
-    looked = "\n  ".join(str(c) for c in candidates)
+    sibling = REPO_ROOT.parent / "Open-ECG-Digitizer"
+    if (sibling / "src" / "digitize.py").is_file():
+        return sibling.resolve()
+
     raise DigitizerNotFound(
-        f"Could not find an Open-ECG-Digitizer checkout. Looked in:\n  {looked}\n\n"
+        f"Could not find an Open-ECG-Digitizer checkout at {sibling}.\n\n"
         f"Fix it with either:\n"
         f"  export {ENV_HOME}=/path/to/Open-ECG-Digitizer\n"
         f"  bash scripts/setup_digitizer.sh   # clones and patches one for you"

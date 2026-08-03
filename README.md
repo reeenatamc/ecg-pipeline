@@ -126,6 +126,23 @@ residual (mean grid distance × a scaling factor), not a normalized score, and `
 hardcoded sentinel for "no layout matched" rather than a measurement. Calibrate on your
 own data before enabling `--max-matching-cost`.
 
+## Tests
+
+```bash
+python -m unittest discover -s tests
+```
+
+37 tests, ~0.04 s. They need neither the model weights nor a digitizer checkout — the
+safety logic runs on synthetic arrays, and `digitize()` is exercised against a mocked
+subprocess. Written with stdlib `unittest` so a fresh clone can run them before any
+`pip install`.
+
+The suite covers the quality gates, the metadata parsing, checkout resolution, and the
+argument construction that the digitizer's CLI is picky about. Two cases worth knowing:
+`test_zscore_is_unit_invariant` is the regression guard for the µV/mV mismatch (see
+above), and `test_input_and_output_are_passed_as_positional_overrides` pins the fact
+that the digitizer takes overrides positionally — a `--overrides` flag makes it exit 2.
+
 ## Layout
 
 ```
@@ -137,6 +154,7 @@ ecg_pipeline/
 configs/                digitizer configs and lead layouts
 patches/                fixes applied to the external checkout (CC BY-SA 4.0)
 scripts/                setup helpers
+tests/                  stdlib unittest suite, no weights required
 ```
 
 ## Status

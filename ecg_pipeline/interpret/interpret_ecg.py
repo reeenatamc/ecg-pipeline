@@ -200,12 +200,16 @@ def assess_quality(
     full = [l for l in CANONICAL_LEADS if l in info and info[l]["coverage"] >= coverage_min]
     ordered = [l for l in PREFERRED_RHYTHM_LEADS if l in full] + [l for l in full if l not in PREFERRED_RHYTHM_LEADS]
 
+    # A lead with no samples at all is not a fallback candidate: selecting it would only
+    # push the failure downstream into clean_lead as an "entirely NaN" error.
+    with_signal = {l: v for l, v in info.items() if v["coverage"] > 0}
+
     warnings: list[str] = []
     degraded = False
     if ordered:
         selected = ordered
-    elif info:
-        selected = [max(info, key=lambda l: info[l]["coverage"])]
+    elif with_signal:
+        selected = [max(with_signal, key=lambda l: with_signal[l]["coverage"])]
         degraded = True
         pct = 100 * info[selected[0]]["coverage"]
         warnings.append(
@@ -218,7 +222,7 @@ def assess_quality(
         degraded = True
         warnings.append("No leads were recovered from the digitized signal.")
 
-    usable = [l for l in info if info[l]["coverage"] > 0]
+    usable = list(with_signal)
     if info and len(usable) < 6:
         warnings.append(
             f"Only {len(usable)} of 12 leads carry any signal ({', '.join(usable) or 'none'}). "
@@ -400,11 +404,17 @@ def interpret_csv(
     quality = assess_quality(canonical, names, coverage_min)
     warnings: list[str] = list(quality["warnings"])
 
+    # The 12lead pathway is known to over-call pathology -- it returns LATERAL INFARCT
+    # ~0.99 on a verified-normal ECG -- because a 3x4's columns are recorded at different
+    # times and the montage is therefore phase-misaligned. That is a property of the
+    # pathway, not of the input, so it is degraded unconditionally: no clean scan should
+    # let a 12lead result pass a --fail-on-degraded gate.
     if pathway == "12lead":
+        quality["degraded"] = True
         warnings.append(
-            "The 12lead pathway is EXPERIMENTAL. A 3x4 layout records its columns at "
-            "different times, so the montage is phase-misaligned and this pathway "
-            "over-calls pathology. Prefer 'rhythm'."
+            "The 12lead pathway is EXPERIMENTAL and over-calls pathology (a 3x4 layout "
+            "records its columns at different times, so the montage is phase-misaligned). "
+            "Every 12lead result is marked degraded. Prefer 'rhythm'."
         )
 
     if pathway == "rhythm":
