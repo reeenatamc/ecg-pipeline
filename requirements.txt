@@ -3,7 +3,20 @@
 # The digitization stage runs as a separate process out of the Open-ECG-Digitizer
 # checkout and uses that project's own requirements.txt -- it is not duplicated here.
 # The two stages may share one virtualenv or use separate ones; see README.
+#
+# The upper bounds are recorded incompatibilities rather than caution. This is the stack
+# the pipeline has been validated on: Python 3.12, Intel macOS, CPU.
 
-numpy
-torch
-matplotlib   # imported by the vendored ECGFounder net1d.py
+# torch 2.2.x is built against the numpy 1.x C ABI and fails at import under numpy 2.x.
+# Relax one bound and you must relax the other: numpy>=2 needs torch>=2.3.
+numpy>=1.26,<2
+torch>=2.2,<2.4
+
+# find_peaks, for R-peak detection when building the representative beat.
+scipy>=1.12,<2
+
+# Lanczos resampling for the pre-digitization upscale.
+pillow>=10.2
+
+# Imported by the vendored ECGFounder net1d.py.
+matplotlib>=3.8

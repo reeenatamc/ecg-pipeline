@@ -11,11 +11,16 @@ rhythm strips, so no pathway invents signal:
 * ``rhythm`` (default) - run the 1-lead checkpoint on every full-length rhythm
       strip (II / V1 / V5) and average the opinions. Trustworthy for rhythm/rate.
 * ``1lead``  - the 1-lead checkpoint on a single chosen lead (inspection).
+* ``morphology`` - a representative (median) beat per lead, phase-aligned across all
+      twelve, tiled to 10 s -> 12-lead checkpoint. This is the pathway to use for
+      morphology; it removes the false pathology ``12lead`` produces. It ERASES rhythm
+      (a median beat is perfectly regular), so rhythm and rate must come from
+      ``rhythm``. See ``representative_beat.py``.
 * ``12lead`` - each lead's own ~2.5 s column window assembled into a concurrent
-      montage -> 12-lead checkpoint. EXPERIMENTAL: a 3x4's columns are acquired at
-      different times, so the beats are phase-misaligned and this pathway over-calls
-      pathology (e.g. false LATERAL INFARCT on a normal ECG). Needs representative-
-      beat / R-peak alignment before it can be trusted; kept here for that follow-up.
+      montage -> 12-lead checkpoint. The naive assembly, kept for comparison: a 3x4's
+      columns are acquired at different times, so the beats are phase-misaligned and
+      this pathway over-calls pathology (false LATERAL INFARCT 0.997 on a normal ECG).
+      Prefer ``morphology``.
 
 ``net1d.Net1D`` uses global average pooling, so it accepts variable input length;
 we keep each lead's native time base rather than stretching a short window to 10 s.
@@ -52,6 +57,30 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from net1d import Net1D  # noqa: E402
 
+# Re-exported deliberately: these were defined here before ``waveform.py` existed, and callers
+# (including the test suite) import them from this module.
+from ecg_pipeline.interpret import PATHWAYS  # noqa: E402
+from ecg_pipeline.interpret.representative_beat import (  # noqa: E402
+    representative_beat,
+    residual_desync_ms,
+    tile_to_length,
+)
+from ecg_pipeline.interpret.waveform import (  # noqa: E402
+    CANONICAL_FS,
+    CANONICAL_LEADS,
+    PREFERRED_RHYTHM_LEADS,
+    STANDARD_3X4_COLUMNS,
+    assess_quality,
+    clean_lead,
+    extract_lead,
+    interpolate_internal_nans,
+    lead_windows,
+    load_canonical_csv,
+    resample_to,
+    select_rhythm_leads,
+    zscore,
+)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 TASKS_PATH = os.path.join(HERE, "tasks.txt")
 
@@ -62,22 +91,13 @@ WEIGHTS_DIR = os.environ.get("ECGFOUNDER_WEIGHTS_DIR", os.path.join(REPO_ROOT, "
 DEFAULT_1LEAD_CKPT = os.path.join(WEIGHTS_DIR, "1_lead_ECGFounder.pth")
 DEFAULT_12LEAD_CKPT = os.path.join(WEIGHTS_DIR, "12_lead_ECGFounder.pth")
 
-# Canonical lead order emitted by the digitizer (matches ECGFounder's expected order).
-CANONICAL_LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
-
-# Leads most commonly printed as full-length rhythm strips, in preference order.
-PREFERRED_RHYTHM_LEADS = ["II", "V1", "V5"]
-
-# Standard 3x4 paper layout: the four time columns and the leads printed in each.
-STANDARD_3X4_COLUMNS = [
-    ["I", "II", "III"],
-    ["aVR", "aVL", "aVF"],
-    ["V1", "V2", "V3"],
-    ["V4", "V5", "V6"],
-]
-
 # A few labels worth surfacing explicitly as a normality summary.
 SUMMARY_LABELS = ["NORMAL ECG", "NORMAL SINUS RHYTHM", "SINUS RHYTHM", "ABNORMAL ECG"]
+
+# The representative beat is repeated to this duration before scoring: ECGFounder was
+# trained on ~10 s records and reads a lone 0.8 s beat poorly (on the reference normal ECG,
+# NORMAL ECG 0.12 as a single beat against 0.88 tiled).
+MORPHOLOGY_TILE_SECONDS = 10.0
 
 # Exact constructors used by ECGFounder for the released checkpoints
 # (see ptbxl_eval.py / finetune_model.py upstream). Only in_channels differs.
@@ -105,148 +125,9 @@ def load_tasks(path: str = TASKS_PATH) -> list[str]:
         return [line.strip() for line in fin if line.strip()]
 
 
-def load_canonical_csv(path: str) -> tuple[npt.NDArray[np.float64], list[str]]:
-    """Read the digitizer's ``*_timeseries_canonical.csv`` (rows=time, cols=leads).
-
-    Returns (signal, lead_names) with signal shaped (n_leads, n_samples). Missing
-    samples (leads outside their printed window) are NaN, as written by the digitizer.
-    """
-    with open(path, "r") as fin:
-        header = fin.readline().strip().split(",")
-    data = np.genfromtxt(path, delimiter=",", skip_header=1)
-    if data.ndim == 1:
-        data = data[:, None]
-    return data.T, header
-
-
 def load_thresholds(path: str) -> dict[str, float]:
     with open(path, "r") as fin:
         return {str(k): float(v) for k, v in json.load(fin).items()}
-
-
-# ------------------------------------------------------------------ signal prep
-
-def _interp_internal_nans(seg: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """Linearly interpolate NaNs that sit between valid samples."""
-    seg = seg.astype(np.float64).copy()
-    holes = np.isnan(seg)
-    if holes.any() and not holes.all():
-        idx = np.arange(seg.size)
-        seg[holes] = np.interp(idx[holes], idx[~holes], seg[~holes])
-    return seg
-
-
-def _resample_to(x: npt.NDArray[np.float64], n: int) -> npt.NDArray[np.float64]:
-    """Linear resample a 1-D array to ``n`` samples (matches ECGFounder resample_unequal)."""
-    if x.size == n or x.size == 0:
-        return x
-    return np.interp(np.linspace(0.0, 1.0, n), np.linspace(0.0, 1.0, x.size), x)
-
-
-def zscore(x: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """ECGFounder's normalization: global mean/std over the whole array.
-
-    For 1 lead this is per-lead; for the 12-lead montage it preserves the relative
-    amplitudes between leads (diagnostically meaningful). Units cancel either way.
-    """
-    return (x - np.mean(x)) / (np.std(x) + 1e-8)
-
-
-def extract_lead(canonical: npt.NDArray[np.float64], names: list[str], lead: str) -> npt.NDArray[np.float64]:
-    if lead not in names:
-        raise ValueError(f"Lead {lead!r} not found. Available: {names}")
-    return canonical[names.index(lead)].astype(np.float64)
-
-
-def clean_lead(x: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """Trim to the valid ``[first..last]`` span and interpolate internal NaNs.
-
-    Does NOT resample/stretch: the lead's native time base (and heart rate) is kept.
-    """
-    valid = np.where(~np.isnan(x))[0]
-    if valid.size == 0:
-        raise ValueError("Lead is entirely NaN - nothing to interpret.")
-    return _interp_internal_nans(x[valid[0] : valid[-1] + 1])
-
-
-def _lead_windows(canonical: npt.NDArray[np.float64], names: list[str]) -> dict[str, dict[str, Any]]:
-    """Per-lead valid span + coverage fraction."""
-    info: dict[str, dict[str, Any]] = {}
-    n = canonical.shape[1]
-    for lead in CANONICAL_LEADS:
-        if lead not in names:
-            continue
-        x = canonical[names.index(lead)]
-        valid = np.where(~np.isnan(x))[0]
-        info[lead] = {
-            "coverage": float(valid.size / n) if n else 0.0,
-            "span": (int(valid[0]), int(valid[-1])) if valid.size else None,
-        }
-    return info
-
-
-def assess_quality(
-    canonical: npt.NDArray[np.float64], names: list[str], coverage_min: float = 0.6
-) -> dict[str, Any]:
-    """Single source of truth for which leads are usable and how much to trust them.
-
-    The rhythm pathway is only meaningful when at least one lead was printed at full
-    length. When none was, the caller still gets an answer -- built from the single
-    best-covered lead, which on a 3x4 layout is a ~2.5 s fragment. That is a materially
-    weaker basis for a rhythm call, so it is reported as ``degraded`` rather than
-    silently passed off as a rhythm-strip ensemble.
-    """
-    info = _lead_windows(canonical, names)
-    full = [l for l in CANONICAL_LEADS if l in info and info[l]["coverage"] >= coverage_min]
-    ordered = [l for l in PREFERRED_RHYTHM_LEADS if l in full] + [l for l in full if l not in PREFERRED_RHYTHM_LEADS]
-
-    # A lead with no samples at all is not a fallback candidate: selecting it would only
-    # push the failure downstream into clean_lead as an "entirely NaN" error.
-    with_signal = {l: v for l, v in info.items() if v["coverage"] > 0}
-
-    warnings: list[str] = []
-    degraded = False
-    if ordered:
-        selected = ordered
-    elif with_signal:
-        selected = [max(with_signal, key=lambda l: with_signal[l]["coverage"])]
-        degraded = True
-        pct = 100 * info[selected[0]]["coverage"]
-        warnings.append(
-            f"No lead reached {100 * coverage_min:.0f}% coverage, so no full-length rhythm strip was "
-            f"available. Fell back to the single best-covered lead ({selected[0]}, {pct:.0f}%). "
-            f"Treat rhythm and rate findings as unreliable."
-        )
-    else:
-        selected = []
-        degraded = True
-        warnings.append("No leads were recovered from the digitized signal.")
-
-    usable = list(with_signal)
-    if info and len(usable) < 6:
-        warnings.append(
-            f"Only {len(usable)} of 12 leads carry any signal ({', '.join(usable) or 'none'}). "
-            f"The digitization is likely incomplete."
-        )
-
-    return {
-        "coverage": {l: round(info[l]["coverage"], 3) for l in info},
-        "leads_with_signal": usable,
-        "full_length_leads": ordered,
-        "selected_leads": selected,
-        "coverage_min": coverage_min,
-        "degraded": degraded,
-        "warnings": warnings,
-    }
-
-
-def select_rhythm_leads(canonical: npt.NDArray[np.float64], names: list[str], coverage_min: float = 0.6) -> list[str]:
-    """Full-length leads usable as rhythm strips, preferred order; else best-covered single lead.
-
-    Thin wrapper over ``assess_quality``; use that directly when you need to know whether
-    the selection was degraded.
-    """
-    return list(assess_quality(canonical, names, coverage_min)["selected_leads"])
 
 
 def build_12lead_montage(
@@ -263,7 +144,7 @@ def build_12lead_montage(
     globally z-scored. Note: the columns are non-simultaneous, so beats are not phase
     aligned across leads - this pathway is not yet trustworthy (see module docstring).
     """
-    info = _lead_windows(canonical, names)
+    info = lead_windows(canonical, names)
     col_of = {lead: ci for ci, leads in enumerate(STANDARD_3X4_COLUMNS) for lead in leads}
     n = canonical.shape[1]
     nominal = n // len(STANDARD_3X4_COLUMNS)
@@ -290,11 +171,11 @@ def build_12lead_montage(
         else:
             s, e = col_window[col_of[lead]]
             used[lead] = "column-window"
-        seg = _interp_internal_nans(x[s : e + 1])
+        seg = interpolate_internal_nans(x[s : e + 1])
         if np.isnan(seg).all():
             used[lead] = "empty->zeros"
             continue
-        montage[li] = _resample_to(np.nan_to_num(seg, nan=0.0), target_len)
+        montage[li] = resample_to(np.nan_to_num(seg, nan=0.0), target_len)
 
     meta = {"target_len": target_len, "column_windows": {i: list(w) for i, w in col_window.items()}, "lead_source": used}
     return zscore(montage), meta
@@ -322,6 +203,24 @@ def build_1lead_model(ckpt_path: str = DEFAULT_1LEAD_CKPT, device: str = "cpu") 
 
 def build_12lead_model(ckpt_path: str = DEFAULT_12LEAD_CKPT, device: str = "cpu") -> Net1D:
     return _build_model(MODEL_KWARGS_12LEAD, ckpt_path, device)
+
+
+def default_checkpoint(pathway: str) -> str:
+    """Which of the two checkpoints a pathway runs on."""
+    return DEFAULT_1LEAD_CKPT if pathway in ("rhythm", "1lead") else DEFAULT_12LEAD_CKPT
+
+
+def build_model_for(pathway: str, ckpt_path: str | None = None, device: str = "cpu") -> tuple[Net1D, str]:
+    """Load the model a pathway needs, once, for a caller that will reuse it.
+
+    ``interpret_csv`` builds its own when not given one, which is right for a single CSV and
+    wasteful for a batch: reading a 370 MB checkpoint costs over a second per record, paid
+    again for every ECG in the run. Returns the checkpoint path alongside the model because
+    the result reports which weights produced it.
+    """
+    ckpt_path = ckpt_path or default_checkpoint(pathway)
+    builder = build_1lead_model if pathway in ("rhythm", "1lead") else build_12lead_model
+    return builder(ckpt_path, device), ckpt_path
 
 
 @torch.no_grad()
@@ -398,10 +297,21 @@ def interpret_csv(
     coverage_min: float = 0.6,
     thresholds: dict[str, float] | None = None,
     flat_threshold: float | None = None,
+    model: Net1D | None = None,
 ) -> dict[str, Any]:
+    """Interpret one canonical CSV.
+
+    ``model`` lets a batch caller load the checkpoint once and hand the same model to every
+    record; left None, one is built here, which is the right thing for a single CSV and over
+    a second of wasted checkpoint reading per record otherwise.
+    """
     tasks = load_tasks()
     canonical, names = load_canonical_csv(csv_path)
-    quality = assess_quality(canonical, names, coverage_min)
+    # Only the pathways that read a continuous strip need a full-length lead. The
+    # representative beat is built from the ~2.5 s column windows on purpose, so holding it
+    # to that requirement would attach a rhythm-pathway complaint to a morphology result --
+    # and degrade a 3x3 print, which has no rhythm strip by construction.
+    quality = assess_quality(canonical, names, coverage_min, needs_full_length=pathway in ("rhythm", "1lead"))
     warnings: list[str] = list(quality["warnings"])
 
     # The 12lead pathway is known to over-call pathology -- it returns LATERAL INFARCT
@@ -412,14 +322,31 @@ def interpret_csv(
     if pathway == "12lead":
         quality["degraded"] = True
         warnings.append(
-            "The 12lead pathway is EXPERIMENTAL and over-calls pathology (a 3x4 layout "
-            "records its columns at different times, so the montage is phase-misaligned). "
-            "Every 12lead result is marked degraded. Prefer 'rhythm'."
+            "The 12lead pathway over-calls pathology (a 3x4 layout records its columns at "
+            "different times, so the montage is phase-misaligned). Every 12lead result is "
+            "marked degraded. Use 'morphology', which aligns the leads first."
+        )
+
+    # Two separate reasons, both permanent properties of the pathway rather than of the
+    # input. The first is the one that gets people into trouble: the numbers look better
+    # than the rhythm pathway's, on a signal from which rhythm has been averaged away.
+    if pathway == "morphology":
+        quality["degraded"] = True
+        warnings.append(
+            "The morphology pathway reads a median beat, which is perfectly regular by "
+            "construction: it ERASES rhythm. On a confirmed atrial-fibrillation ECG it "
+            "reports SINUS RHYTHM 0.98. Disregard every rhythm and rate label here and "
+            "take those from the 'rhythm' pathway."
+        )
+        warnings.append(
+            "It corrects the false pathology of the '12lead' montage, but has not yet been "
+            "validated against ECGs with confirmed morphological diagnoses, so it is "
+            "reported as degraded."
         )
 
     if pathway == "rhythm":
         ckpt = ckpt or DEFAULT_1LEAD_CKPT
-        model = build_1lead_model(ckpt, device)
+        model = build_1lead_model(ckpt, device) if model is None else model
         probs, per_lead, leads = interpret_rhythm(canonical, names, model, None, coverage_min, combine, device)
         detail: dict[str, Any] = {
             "rhythm_leads": leads,
@@ -431,21 +358,42 @@ def interpret_csv(
         raw = extract_lead(canonical, names, lead)
         n_total, n_valid = int(raw.size), int(np.sum(~np.isnan(raw)))
         signal = zscore(clean_lead(raw))
-        model = build_1lead_model(ckpt, device)
+        model = build_1lead_model(ckpt, device) if model is None else model
         probs = predict_probs(model, signal, device)
         detail = {
             "lead": lead,
             "coverage": {"valid_samples": n_valid, "total_samples": n_total, "pct": round(100 * n_valid / n_total, 1)},
             "samples_used": int(signal.size),
         }
+    elif pathway == "morphology":
+        ckpt = ckpt or DEFAULT_12LEAD_CKPT
+        beat, beat_meta = representative_beat(canonical, names)
+        tiled = tile_to_length(beat, int(MORPHOLOGY_TILE_SECONDS * beat_meta["fs"]))
+        model = build_12lead_model(ckpt, device) if model is None else model
+        probs = predict_probs(model, tiled, device)
+        detail = {
+            "representative_beat": {
+                **beat_meta,
+                "tiled_to_samples": int(tiled.shape[1]),
+                # Reported, not gated on: what counts as tolerable is a clinical question,
+                # and the answer is being sought. Against an 80-100 ms QRS, tens of ms are
+                # not negligible for fine morphology.
+                "residual_desync_ms": residual_desync_ms(beat, beat_meta["fs"]),
+            }
+        }
+        if beat_meta["leads_without_a_beat"]:
+            warnings.append(
+                f"No beat could be extracted for {', '.join(beat_meta['leads_without_a_beat'])}; "
+                f"those leads are flat in the montage and contribute nothing."
+            )
     elif pathway == "12lead":
         ckpt = ckpt or DEFAULT_12LEAD_CKPT
         montage, meta = build_12lead_montage(canonical, names)
-        model = build_12lead_model(ckpt, device)
+        model = build_12lead_model(ckpt, device) if model is None else model
         probs = predict_probs(model, montage, device)
         detail = {"montage": meta, "experimental": True}
     else:
-        raise ValueError(f"Unknown pathway {pathway!r} (use 'rhythm', '1lead' or '12lead').")
+        raise ValueError(f"Unknown pathway {pathway!r} (use one of: {', '.join(PATHWAYS)}).")
 
     result: dict[str, Any] = {
         "source_csv": csv_path,
@@ -472,8 +420,16 @@ def _print_report(res: dict[str, Any]) -> None:
     elif res["pathway"] == "1lead":
         cov = res["coverage"]
         head = f"lead {res['lead']}  |  {cov['valid_samples']}/{cov['total_samples']} real ({cov['pct']}%)  |  fed {res['samples_used']}"
+    elif res["pathway"] == "morphology":
+        beat = res["representative_beat"]
+        counts = beat["beats_per_lead"].values()
+        desync = beat["residual_desync_ms"].values()
+        head = (
+            f"representative beat  |  {min(counts, default=0)}-{max(counts, default=0)} beats/lead  |  "
+            f"worst desync {max((abs(v) for v in desync), default=0.0):.0f} ms  |  MORPHOLOGY ONLY"
+        )
     else:
-        head = f"12-lead 2.5s montage  |  {res['montage']['target_len']} samples/lead  |  EXPERIMENTAL"
+        head = f"12-lead 2.5s montage  |  {res['montage']['target_len']} samples/lead  |  phase-misaligned"
     print(f"\nECGFounder [{res['pathway']}, 150-class]  |  {head}")
     if res.get("warnings"):
         banner = "DEGRADED" if res.get("degraded") else "CAUTION"
@@ -499,7 +455,7 @@ def _print_report(res: dict[str, Any]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Interpret a digitized ECG with ECGFounder (150-class).")
     ap.add_argument("--csv", required=True, help="Digitizer canonical timeseries CSV")
-    ap.add_argument("--pathway", choices=["rhythm", "1lead", "12lead"], default="rhythm")
+    ap.add_argument("--pathway", choices=list(PATHWAYS), default="rhythm")
     ap.add_argument("--lead", default="II", help="[1lead] Lead to interpret (a full rhythm strip is best)")
     ap.add_argument("--combine", choices=["mean", "max"], default="mean", help="[rhythm] combine leads")
     ap.add_argument("--coverage-min", type=float, default=0.6, help="[rhythm] min coverage to treat a lead as full-length")

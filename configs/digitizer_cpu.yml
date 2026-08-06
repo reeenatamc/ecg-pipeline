@@ -69,4 +69,9 @@ DATA:
   image_extensions: ['.png', '.jpg', '.jpeg', '.JPG']
   output_path: 'output'
   save_mode: 'all'
-  clear_output_dir_if_exists: true
+  # Deliberately false. When true, the digitizer walks the output directory and deletes
+  # every file and subdirectory in it before starting -- everything, not just its own
+  # artifacts. Pointing --out at a directory that holds anything else destroys it.
+  # ecg_pipeline.pipeline instead removes exactly the artifacts for the records it is about
+  # to rewrite, which is what the flag was wanted for in the first place.
+  clear_output_dir_if_exists: false

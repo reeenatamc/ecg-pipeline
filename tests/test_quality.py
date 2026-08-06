@@ -74,6 +74,53 @@ class TestAssessQuality(unittest.TestCase):
         self.assertEqual(q["leads_with_signal"], ["I", "aVR", "aVL"])
         self.assertTrue(any("Only 3 of 12" in w for w in q["warnings"]))
 
+    def test_a_six_lead_recovery_warns_and_names_what_is_missing(self):
+        """The wrong-layout case. Upscaling the right-sided ECG stopped the digitizer from
+        reporting 'Unknown layout' -- it matched a 6-lead precordial_3x2 at a cost
+        indistinguishable from a correct match. The six absent leads are what give it away,
+        so the threshold is any missing lead, not a handful."""
+        canonical, names = frame({l: 0.98 for l in ("V1", "V2", "V3", "V4", "V5", "V6")})
+        q = assess_quality(canonical, names)
+
+        self.assertFalse(q["degraded"])  # the coverage gate has no complaint; that is the point
+        self.assertEqual(q["leads_missing"], ["I", "II", "III", "aVR", "aVL", "aVF"])
+        warning = next(w for w in q["warnings"] if "Only 6 of 12" in w)
+        self.assertIn("missing I, II, III, aVR, aVL, aVF", warning)
+        self.assertIn("--lead-layout", warning)
+
+    def test_a_pathway_that_needs_no_strip_is_not_degraded_for_lacking_one(self):
+        """A 3x3 print has no rhythm strip at all, by construction. Reading its morphology
+        off ~2.5 s column windows is what the representative beat does on purpose, so the
+        rhythm pathway's complaint must not travel with it."""
+        canonical, names = frame({l: 0.33 for l in CANONICAL_LEADS})
+
+        rhythm = assess_quality(canonical, names)
+        morphology = assess_quality(canonical, names, needs_full_length=False)
+
+        self.assertTrue(rhythm["degraded"])
+        self.assertFalse(morphology["degraded"])
+        self.assertEqual(morphology["warnings"], [])
+
+    def test_a_frame_with_no_signal_degrades_for_every_pathway(self):
+        # needs_full_length only relaxes the strip requirement; nothing rescues an empty frame.
+        canonical, names = frame({})
+
+        self.assertTrue(assess_quality(canonical, names, needs_full_length=False)["degraded"])
+
+    def test_lead_completeness_applies_to_every_pathway(self):
+        canonical, names = frame({l: 0.33 for l in ("V1", "V2", "V3", "V4", "V5", "V6")})
+
+        q = assess_quality(canonical, names, needs_full_length=False)
+
+        self.assertTrue(any("Only 6 of 12" in w for w in q["warnings"]))
+
+    def test_a_complete_digitization_says_nothing_about_lead_count(self):
+        canonical, names = frame({l: 0.25 for l in CANONICAL_LEADS} | {"II": 1.0})
+        q = assess_quality(canonical, names)
+
+        self.assertEqual(q["leads_missing"], [])
+        self.assertEqual(q["warnings"], [])
+
     def test_empty_frame_degrades_without_crashing(self):
         canonical, names = frame({})
         q = assess_quality(canonical, names)
