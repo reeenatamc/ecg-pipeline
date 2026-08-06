@@ -14,6 +14,12 @@ out/
 data/
 *.dcm
 
+# ECGs de muestra copiados desde el checkout del digitalizador, para demos.
+# NO se versionan: son material CC BY-SA, y este repositorio se mantiene libre de
+# el a proposito (ver NOTICE). Redistribuirlos sin modificar solo exigiria
+# atribucion, pero la linea es mas facil de defender si no se cruza.
+ejemplo-ecg-*.png
+
 # Python
 __pycache__/
 *.py[cod]
