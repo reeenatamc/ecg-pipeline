@@ -4,15 +4,15 @@ Paper ECG image → digitized time series → diagnostic interpretation.
 
 Two stages:
 
-1. **Digitization** — [Open-ECG-Digitizer](https://github.com/Ahus-AIM/Open-ECG-Digitizer)
+1. **Digitization**: [Open-ECG-Digitizer](https://github.com/Ahus-AIM/Open-ECG-Digitizer)
    converts a scanned or photographed 12-lead ECG into canonical time series.
    It runs as an **external process**; its source is never bundled here.
-2. **Interpretation** — [ECGFounder](https://github.com/PKUDigitalHealth/ECGFounder)
+2. **Interpretation**: [ECGFounder](https://github.com/PKUDigitalHealth/ECGFounder)
    scores the digitized signal against 150 diagnostic classes.
 
 ## Why the digitizer is not vendored
 
-Open-ECG-Digitizer is **CC BY-SA 4.0** — a ShareAlike (copyleft) licence. Copying its
+Open-ECG-Digitizer is **CC BY-SA 4.0**, a ShareAlike (copyleft) licence. Copying its
 source here would make this repository Adapted Material and force it under CC BY-SA 4.0
 too. Running it as a separate program does not, and CC BY-SA has no network/SaaS clause,
 so serving it from a backend triggers nothing. Its *output* is not encumbered either.
@@ -39,7 +39,7 @@ export OPEN_ECG_DIGITIZER_HOME=/path/to/Open-ECG-Digitizer
 ```
 
 The digitizer needs its own dependencies (`pip install -r $OPEN_ECG_DIGITIZER_HOME/requirements.txt`).
-It can share this virtualenv or use its own — if separate, pass the interpreter through
+It can share this virtualenv or use its own, if separate, pass the interpreter through
 `digitize(python_exe=...)`.
 
 ## Usage
@@ -78,15 +78,15 @@ results = pipeline.run(image_dir="in/", output_dir="out/", pathway="rhythm")
 |---|---|---|
 | `rhythm` (default) | 1-lead model over every full-length rhythm strip (II/V1/V5), opinions averaged | Reliable for rhythm and rate |
 | `1lead` | 1-lead model on one chosen lead | Inspection/debugging |
-| `morphology` | Median beat per lead, phase-aligned across all 12, tiled to 10 s → 12-lead model | Morphology only — **never rhythm** |
+| `morphology` | Median beat per lead, phase-aligned across all 12, tiled to 10 s → 12-lead model | Morphology only, **never rhythm** |
 | `12lead` | Per-lead ~2.5 s windows assembled into a montage → 12-lead model | Naive; kept for comparison |
 
 A standard 3×4 paper ECG prints only ~2.5 s of most leads, and the columns are recorded
-at *different times* — up to 7.5 s apart. The `12lead` pathway feeds the model those
+at *different times*, up to 7.5 s apart. The `12lead` pathway feeds the model those
 columns as if they were simultaneous, and it reads the misalignment as pathology: a false
 `LATERAL INFARCT` at 0.997 on a verified-normal ECG.
 
-`morphology` fixes that the way commercial electrocardiographs do internally — a
+`morphology` fixes that the way commercial electrocardiographs do internally, a
 **representative complex**. Within one column the three leads *are* simultaneous, so R
 peaks found in the column's strongest lead time every lead in it; each lead's beats are
 then median-averaged and the twelve are assembled on a common fiducial. On that same
@@ -103,17 +103,17 @@ normal ECG:
 construction. On a confirmed atrial-fibrillation ECG, `ATRIAL FIBRILLATION` falls from
 0.927 (via `rhythm`) out of the top ranking, and the model reads `SINUS RHYTHM` 0.982 on a
 patient in AF. Take rhythm and rate from `rhythm`; take morphology from here. Both are
-reported as `degraded` — `morphology` because it has not yet been validated against ECGs
+reported as `degraded`, `morphology` because it has not yet been validated against ECGs
 with confirmed morphological diagnoses.
 
 Each `morphology` result reports `beats_per_lead` (2–4 for grid leads, 10–12 for rhythm
 strips) and `residual_desync_ms`, the offset each lead still carries after alignment
 (measured: 0–10 ms in eleven leads, −22 ms in V6). The fiducial is each lead's *dominant*
-deflection, which is the S wave where the QRS points down (V1–V4) — moving it to QRS onset,
+deflection, which is the S wave where the QRS points down (V1–V4), moving it to QRS onset,
 or to a global fiducial from the 12-lead vector magnitude, is the known next improvement.
 
 **Scores are rankings, not calibrated probabilities.** Raw sigmoid outputs are not
-present/absent decisions — `ABNORMAL ECG` can score high alongside `NORMAL ECG`.
+present/absent decisions, `ABNORMAL ECG` can score high alongside `NORMAL ECG`.
 ECGFounder binarizes with per-class thresholds derived on PTB-XL. Pass `--thresholds`
 (a `{label: threshold}` JSON) or `--threshold` to get a flagged list; without one you get
 a ranking only.
@@ -136,7 +136,7 @@ enough that the network loses most of it. Measured on the reference normal ECG
 2000 px wide, capped at ×3. The cap is a measurement, not caution: on the 488 px
 right-sided ECG, ×3 → 1464 px matches the paper grid at cost 0.17 while ×4 → 1952 px
 recovers the same 9 leads at 0.70. Pass `--upscale off` or an explicit factor to override.
-The factor applied is reported per record under `preprocessing`, and printed on the run —
+The factor applied is reported per record under `preprocessing`, and printed on the run 
 it is never silent. Lanczos resampling invents no signal; it gives the segmentation network
 enough pixels to find the trace already printed on the paper.
 
@@ -146,19 +146,19 @@ A digitizer that fails still produces a CSV, and ECGFounder will happily score n
 0.99. Every result therefore carries `degraded`, `warnings`, `digitization`, and
 `signal_quality`. **Read `degraded` before `topk`.**
 
-Three independent gates, all needed — none catches the others' failures:
+Three independent gates, all needed: none catches the others' failures:
 
 1. **Layout** (from the digitizer's `digitization_metadata.csv`). When no layout matches,
    the digitizer emits `lead_layout: "Unknown layout"`, canonicalization returns an
    all-NaN frame, and whatever signal survives was recovered by rhythm-strip cosine
-   matching — so *which trace is which lead* is a guess. Always flagged.
+   matching, so *which trace is which lead* is a guess. Always flagged.
 2. **Coverage** (from the signal itself). A reading is only meaningful when a lead was
    printed at full length. If none reaches `--coverage-min`, the result is built from a
    single ~2.5 s fragment; that is flagged rather than passed off as an ensemble.
 3. **Lead completeness.** Gate 1 only catches the digitizer *admitting* it found nothing.
    It says nothing about a layout matched confidently and wrongly, which returns a
    complete-looking result for whatever leads that layout happens to have. Any lead short
-   of the full twelve is therefore named in the warnings — "9 of 12" on a 3×3 print is
+   of the full twelve is therefore named in the warnings, "9 of 12" on a 3×3 print is
    expected, "6 of 12" on a 3×4 is a wrong layout.
 
 All three run on `--digitize-only` too, so `--fail-on-degraded` is meaningful without
@@ -168,9 +168,9 @@ Observed on the sample ECGs:
 
 | Input | Layout | Leads | Verdict |
 |---|---|---|---|
-| clean scan | `standard_3x4_with_r3` | 12/12, rhythm II/V1/V5 | clean — `SINUS RHYTHM 0.99` |
-| low-res scan | `standard_3x4_with_r1` | none ≥60% | `DEGRADED` — fell back to V2 alone |
-| unmatched layout | `Unknown layout` | 3/12 | `DEGRADED` — lead identity unreliable |
+| clean scan | `standard_3x4_with_r3` | 12/12, rhythm II/V1/V5 | clean, `SINUS RHYTHM 0.99` |
+| low-res scan | `standard_3x4_with_r1` | none ≥60% | `DEGRADED`, fell back to V2 alone |
+| unmatched layout | `Unknown layout` | 3/12 | `DEGRADED`, lead identity unreliable |
 
 The second case passes the layout gate and the third passes the coverage gate, which is
 why both exist.
@@ -181,7 +181,7 @@ the same image at ×3 comes back 12/12 and clean. Upscaling is the first defence
 are what catch the images it cannot save.
 
 **Upscaling can move a failure from gate 1 to gate 2 or 3, so all three matter.** The
-right-sided ECG at native resolution makes the digitizer give up — `Unknown layout`, cost
+right-sided ECG at native resolution makes the digitizer give up, `Unknown layout`, cost
 1.0, caught by gate 1. Given more pixels it stops giving up and matches a *wrong* layout
 instead, with a cost that looks perfectly ordinary (`standard_3x4` at 0.271, against 0.167
 for the correct forced layout). Nothing in the cost separates them; what does is that no
@@ -196,12 +196,12 @@ carrying the error for each one. The run summary counts digitized images against
 ones, `--fail-on-degraded` catches the failures, and a batch where *every* image failed
 exits 1 rather than reporting an empty success.
 
-The ECGFounder checkpoint is read **once per run**, not once per ECG — 370 MB and over a
+The ECGFounder checkpoint is read **once per run**, not once per ECG, 370 MB and over a
 second each time. On a four-ECG batch that alone is a 5.5× difference.
 
 Subdirectories under `--images` are processed, and their structure is mirrored into the
 output. Records are keyed by their path relative to the output root, so `batch-1/ecg` and
-`batch-2/ecg` stay distinct — the digitizer writes one `digitization_metadata.csv` per
+`batch-2/ecg` stay distinct, the digitizer writes one `digitization_metadata.csv` per
 subdirectory and all of them are read.
 
 The output directory is **not** wiped. The digitizer offers to do it
@@ -255,7 +255,7 @@ Two things it deliberately does not do:
 
 A `degraded` result is emitted as `status: "failed"`, not as observations. The contract has
 `ready` and `failed` and nothing in between, and the distinction this pipeline exists to
-draw — a reading versus a reading that must not be trusted — currently has to collapse into
+draw (a reading versus a reading that must not be trusted) currently has to collapse into
 `failed`. **That is the one field the contract is missing**, and worth raising before the
 backend closes: `AnalysisFailureReason` has no case for "digitized, but too poor to read".
 
@@ -265,13 +265,13 @@ backend closes: `AnalysisFailureReason` has no case for "digitized, but too poor
 python -m unittest discover -s tests
 ```
 
-Fast, and they need neither the model weights nor a digitizer checkout — the safety logic
+Fast, and they need neither the model weights nor a digitizer checkout, the safety logic
 runs on synthetic arrays and `digitize()` is exercised against a mocked subprocess. They do
 need `numpy` and `scipy` (`pip install -r requirements.txt`); torch is never imported, so
 the suite runs long before the ~740 MB of checkpoints are in place.
 
 Run them with the interpreter that has those installed. A bare `python` without numpy does
-**not** fail loudly — `unittest discover` reports the modules it could import and counts the
+**not** fail loudly, `unittest discover` reports the modules it could import and counts the
 rest as a single error, so a green-looking run can be missing whole files. Check the test
 count.
 
@@ -279,7 +279,7 @@ The suite covers the quality gates, the metadata parsing, checkout resolution, a
 argument construction that the digitizer's CLI is picky about. Two cases worth knowing:
 `test_zscore_is_unit_invariant` is the regression guard for the µV/mV mismatch (see
 above), and `test_input_and_output_are_passed_as_positional_overrides` pins the fact
-that the digitizer takes overrides positionally — a `--overrides` flag makes it exit 2.
+that the digitizer takes overrides positionally, a `--overrides` flag makes it exit 2.
 
 ## Layout
 
@@ -302,7 +302,7 @@ tests/                            stdlib unittest suite, no weights required
 
 ## Status
 
-Not a medical device. No regulatory clearance. Research and development use only —
+Not a medical device. No regulatory clearance. Research and development use only 
 outputs are not clinical decisions.
 
 Licensed proprietary; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
