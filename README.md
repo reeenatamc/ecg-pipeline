@@ -146,7 +146,7 @@ A digitizer that fails still produces a CSV, and ECGFounder will happily score n
 0.99. Every result therefore carries `degraded`, `warnings`, `digitization`, and
 `signal_quality`. **Read `degraded` before `topk`.**
 
-Three independent gates, all needed: none catches the others' failures:
+Three independent gates, all needed. None catches the others' failures:
 
 1. **Layout** (from the digitizer's `digitization_metadata.csv`). When no layout matches,
    the digitizer emits `lead_layout: "Unknown layout"`, canonicalization returns an
