@@ -86,9 +86,7 @@ class TestDigitizeOnlyGates(PipelineRunCase):
         # had nothing to fail on however badly digitization had gone.
         self.add_image("ecg")
 
-        results = self.run_pipeline(
-            {"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "Unknown layout"}
-        )
+        results = self.run_pipeline({"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "Unknown layout"})
 
         self.assertTrue(results[0]["degraded"])
         self.assertTrue(any("could not identify the lead layout" in w for w in results[0]["warnings"]))
@@ -96,9 +94,7 @@ class TestDigitizeOnlyGates(PipelineRunCase):
     def test_a_clean_digitization_is_not_flagged(self):
         self.add_image("ecg")
 
-        results = self.run_pipeline(
-            {"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"}
-        )
+        results = self.run_pipeline({"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"})
 
         self.assertFalse(results[0]["degraded"])
         self.assertEqual(results[0]["warnings"], [])
@@ -106,9 +102,7 @@ class TestDigitizeOnlyGates(PipelineRunCase):
     def test_no_full_length_lead_is_flagged_without_interpretation(self):
         self.add_image("ecg")
 
-        results = self.run_pipeline(
-            {"ecg": {lead: 0.25 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"}
-        )
+        results = self.run_pipeline({"ecg": {lead: 0.25 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"})
 
         self.assertTrue(results[0]["degraded"])
         self.assertIn("signal_quality", results[0])
@@ -141,9 +135,7 @@ class TestMissingRecords(PipelineRunCase):
         self.add_image("good")
         self.add_image("bad")
 
-        results = self.run_pipeline(
-            {"good": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"good": "standard_3x4_with_r3"}
-        )
+        results = self.run_pipeline({"good": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"good": "standard_3x4_with_r3"})
 
         self.assertEqual(len(results), 2)
         failed = [r for r in results if r["record"] == "bad"][0]
@@ -189,9 +181,7 @@ class TestNestedBatches(PipelineRunCase):
             return [self.output / "batch-1" / f"ecg{CANONICAL_SUFFIX}"]
 
         with mock.patch.object(pipeline.digitizer, "digitize", side_effect=fake_digitize):
-            results = pipeline.run(
-                image_dir=self.images, output_dir=self.output, skip_interpretation=True, quiet=True
-            )
+            results = pipeline.run(image_dir=self.images, output_dir=self.output, skip_interpretation=True, quiet=True)
 
         self.assertEqual(results[0]["record"], "batch-1/ecg")
         self.assertEqual(results[0]["digitization"]["lead_layout"], "Unknown layout")
@@ -218,9 +208,7 @@ class TestStaleOutputs(PipelineRunCase):
         notes = self.output / "notes.txt"
         notes.write_text("not ours")
 
-        results = self.run_pipeline(
-            {"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"}
-        )
+        results = self.run_pipeline({"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"})
 
         # Neither deleted nor mistaken for a result of this run.
         self.assertTrue(other.exists())

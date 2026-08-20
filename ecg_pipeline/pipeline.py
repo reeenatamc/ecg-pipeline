@@ -83,12 +83,7 @@ def digitization_warnings(meta: dict[str, Any] | None, max_matching_cost: float 
     # Only checked when the caller supplies a threshold: matching_cost is an unbounded
     # residual (mean grid distance x scaling factor), not a normalized score, so there is
     # no defensible universal cutoff. Calibrate one on your own data.
-    if (
-        max_matching_cost is not None
-        and layout != UNKNOWN_LAYOUT
-        and not math.isnan(cost)
-        and cost > max_matching_cost
-    ):
+    if max_matching_cost is not None and layout != UNKNOWN_LAYOUT and not math.isnan(cost) and cost > max_matching_cost:
         warnings.append(
             f"Layout match cost {cost:.3f} exceeds the configured limit {max_matching_cost:.3f}; "
             f"the layout fit is poor."
@@ -171,9 +166,7 @@ def _report_record(name: str, result: dict[str, Any], pathway: str | None) -> No
         print(f"      ! {warning}")
 
 
-def missing_record_results(
-    prepared: dict[str, dict[str, Any]], recovered: set[str]
-) -> list[dict[str, Any]]:
+def missing_record_results(prepared: dict[str, dict[str, Any]], recovered: set[str]) -> list[dict[str, Any]]:
     """One failed result per image the digitizer never produced output for.
 
     The digitizer catches its own per-image exceptions, prints them, and exits 0, so an

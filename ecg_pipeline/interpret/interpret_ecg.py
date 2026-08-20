@@ -119,6 +119,7 @@ MODEL_KWARGS_12LEAD = dict(in_channels=12, **_COMMON_KWARGS)
 
 # --------------------------------------------------------------------------- IO
 
+
 def load_tasks(path: str = TASKS_PATH) -> list[str]:
     """The 150 diagnostic class names, index-aligned to the model's output logits."""
     with open(path, "r") as fin:
@@ -177,11 +178,16 @@ def build_12lead_montage(
             continue
         montage[li] = resample_to(np.nan_to_num(seg, nan=0.0), target_len)
 
-    meta = {"target_len": target_len, "column_windows": {i: list(w) for i, w in col_window.items()}, "lead_source": used}
+    meta = {
+        "target_len": target_len,
+        "column_windows": {i: list(w) for i, w in col_window.items()},
+        "lead_source": used,
+    }
     return zscore(montage), meta
 
 
 # ---------------------------------------------------------------------- model
+
 
 def _build_model(kwargs: dict[str, Any], ckpt_path: str, device: str) -> Net1D:
     model = Net1D(**kwargs)
@@ -235,7 +241,10 @@ def predict_probs(model: Net1D, signal: npt.NDArray[np.float64], device: str = "
 
 def top_k(probs: npt.NDArray[np.float64], tasks: list[str], k: int = 10) -> list[dict[str, Any]]:
     order = np.argsort(probs)[::-1][:k]
-    return [{"rank": r + 1, "index": int(i), "label": tasks[i], "prob": round(float(probs[i]), 4)} for r, i in enumerate(order)]
+    return [
+        {"rank": r + 1, "index": int(i), "label": tasks[i], "prob": round(float(probs[i]), 4)}
+        for r, i in enumerate(order)
+    ]
 
 
 def flagged_findings(
@@ -262,6 +271,7 @@ def summary_probs(probs: npt.NDArray[np.float64], tasks: list[str]) -> dict[str,
 
 
 # ------------------------------------------------------------------- pathways
+
 
 def interpret_rhythm(
     canonical: npt.NDArray[np.float64],
@@ -414,6 +424,7 @@ def interpret_csv(
 
 # --------------------------------------------------------------------- report
 
+
 def _print_report(res: dict[str, Any]) -> None:
     if res["pathway"] == "rhythm":
         head = f"rhythm 1-lead ensemble over {res['rhythm_leads']}  |  combine={res['combine']}"
@@ -458,7 +469,9 @@ def main() -> None:
     ap.add_argument("--pathway", choices=list(PATHWAYS), default="rhythm")
     ap.add_argument("--lead", default="II", help="[1lead] Lead to interpret (a full rhythm strip is best)")
     ap.add_argument("--combine", choices=["mean", "max"], default="mean", help="[rhythm] combine leads")
-    ap.add_argument("--coverage-min", type=float, default=0.6, help="[rhythm] min coverage to treat a lead as full-length")
+    ap.add_argument(
+        "--coverage-min", type=float, default=0.6, help="[rhythm] min coverage to treat a lead as full-length"
+    )
     ap.add_argument("--ckpt", default=None, help="Checkpoint path (defaults per pathway)")
     ap.add_argument("--topk", type=int, default=10)
     ap.add_argument("--thresholds", default=None, help="JSON {label: threshold} for present/absent flags")
@@ -469,9 +482,16 @@ def main() -> None:
 
     thresholds = load_thresholds(args.thresholds) if args.thresholds else None
     res = interpret_csv(
-        args.csv, args.pathway, args.lead, args.ckpt, args.topk, args.device,
-        combine=args.combine, coverage_min=args.coverage_min,
-        thresholds=thresholds, flat_threshold=args.threshold,
+        args.csv,
+        args.pathway,
+        args.lead,
+        args.ckpt,
+        args.topk,
+        args.device,
+        combine=args.combine,
+        coverage_min=args.coverage_min,
+        thresholds=thresholds,
+        flat_threshold=args.threshold,
     )
     _print_report(res)
     if args.json_out:

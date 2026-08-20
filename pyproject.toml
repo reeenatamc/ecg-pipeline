@@ -27,9 +27,15 @@ include = ["ecg_pipeline*"]
 
 [tool.black]
 line-length = 120
+# net1d.py is vendored ECGFounder source. Reformatting it would bury any future
+# upstream diff under 295 lines of style noise.
+force-exclude = "ecg_pipeline/interpret/net1d\\.py"
 
 [tool.isort]
 profile = "black"
+# The black profile defaults to 88, which disagrees with black's own 120 above.
+line_length = 120
+extend_skip = ["ecg_pipeline/interpret/net1d.py"]
 
 [tool.mypy]
 strict = true

@@ -12,12 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ecg_pipeline.pipeline import (
-    METADATA_FILENAME,
-    UNKNOWN_LAYOUT,
-    digitization_warnings,
-    read_digitization_metadata,
-)
+from ecg_pipeline.pipeline import METADATA_FILENAME, UNKNOWN_LAYOUT, digitization_warnings, read_digitization_metadata
 
 HEADER = "file_path,matching_cost,is_flipped,lead_layout\n"
 

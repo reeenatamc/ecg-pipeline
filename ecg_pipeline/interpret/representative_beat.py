@@ -175,9 +175,7 @@ def representative_beat(
                 peaks = column_peaks
 
             cut = [
-                baseline_correct(source[p - pre : p + post])
-                for p in peaks
-                if p - pre >= 0 and p + post <= source.size
+                baseline_correct(source[p - pre : p + post]) for p in peaks if p - pre >= 0 and p + post <= source.size
             ]
             beats_per_lead[lead] = len(cut)
             if cut:

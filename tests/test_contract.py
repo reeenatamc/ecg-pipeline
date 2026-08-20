@@ -115,7 +115,11 @@ class TestObservations(unittest.TestCase):
         self.assertEqual(observations[0]["confidence"], 0.99)
 
     def test_every_observation_needs_review(self):
-        result = {"pathway": "rhythm", "rhythm_leads": ["II"], "topk": [{"label": "A", "prob": 0.9}, {"label": "B", "prob": 0.1}]}
+        result = {
+            "pathway": "rhythm",
+            "rhythm_leads": ["II"],
+            "topk": [{"label": "A", "prob": 0.9}, {"label": "B", "prob": 0.1}],
+        }
 
         self.assertTrue(all(o["needsReview"] for o in to_observations(result)))
 
