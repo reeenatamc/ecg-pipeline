@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A branch only cares about its newest run. Cancel the ones it superseded.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The stack the pipeline is validated on, and the floor pyproject declares.
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install linters
+        run: pip install black==24.1.1 isort==5.13.2
+
+      - name: Byte-compile every module
+        # Cheap syntax check that needs none of the runtime dependencies.
+        run: find ecg_pipeline tests -name '*.py' -print0 | xargs -0 python -m py_compile
+
+      - name: black
+        run: black --check --diff .
+
+      - name: isort
+        run: isort --check-only --diff .
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install CPU-only torch
+        # Installed ahead of the package so the resolver takes these wheels. The
+        # default index serves CUDA builds: several GB of driver payload for a
+        # runner with no GPU.
+        run: pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.2,<2.4"
+
+      - name: Install the package
+        run: pip install -e .
+
+      - name: Run tests
+        # The suite is unittest, and runs on synthetic arrays throughout: no model
+        # weights, no digitizer checkout, no images.
+        run: python -m unittest discover -s tests -v
