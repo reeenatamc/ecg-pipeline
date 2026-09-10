@@ -141,6 +141,20 @@ def failure_reason(result: dict[str, Any]) -> str | None:
         return None
     if not result.get("source_csv"):
         return "unreadable-image"
+
+    # Before blaming this service, ask whether the scan yielded anything at all. A run
+    # that recovered no lead failed on the image, and the record says so on its own,
+    # whether or not interpretation also raised: every lead sits at zero coverage.
+    #
+    # Measured on a blank image pushed through the whole pipeline. The digitizer wrote a
+    # CSV, interpretation raised "No usable lead found in canonical CSV", and this landed
+    # on server-error. Nothing here was broken. The cause reaches a screen as words, and
+    # "something went wrong on our side" sends the user to wait for a fix instead of to
+    # take the photograph again -- the one thing that would have worked.
+    quality = result.get("signal_quality") or {}
+    if quality.get("leads_with_signal") == []:
+        return "unreadable-image"
+
     if "error" in result:
         return "server-error"
     layout = (result.get("digitization") or {}).get("lead_layout")

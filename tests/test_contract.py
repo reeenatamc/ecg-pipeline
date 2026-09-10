@@ -153,6 +153,33 @@ class TestFailureReason(unittest.TestCase):
 
         self.assertEqual(failure_reason(result), "server-error")
 
+    def test_a_scan_that_yielded_no_signal_is_unreadable_not_a_server_error(self):
+        # Measured on a blank image pushed through the whole pipeline. The digitizer
+        # wrote a CSV, interpretation raised "No usable lead found in canonical CSV",
+        # and the error branch blamed the service. Nothing was broken here: the image
+        # had nothing on it. The record says so -- every lead at zero coverage -- before
+        # any exception is considered.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "error": "ValueError: No usable lead found in canonical CSV.",
+            "signal_quality": {"leads_with_signal": []},
+        }
+
+        self.assertEqual(failure_reason(result), "unreadable-image")
+
+    def test_a_crash_with_signal_present_is_still_a_server_error(self):
+        # The other half. Blaming the image for every failure would be the same mistake
+        # in the other direction, and it is this service that the user cannot fix.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "error": "RuntimeError: boom",
+            "signal_quality": {"leads_with_signal": ["II", "V5"]},
+        }
+
+        self.assertEqual(failure_reason(result), "server-error")
+
 
 class TestToAnalysis(unittest.TestCase):
     def test_a_degraded_result_is_not_handed_over_as_ready(self):
