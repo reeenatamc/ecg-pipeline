@@ -12,7 +12,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOME_DIR="${OPEN_ECG_DIGITIZER_HOME:-$(dirname "$REPO_ROOT")/Open-ECG-Digitizer}"
 UPSTREAM="https://github.com/Ahus-AIM/Open-ECG-Digitizer.git"
-PATCH="$REPO_ROOT/patches/0001-digitizer-portability.patch"
+PATCH_DIR="$REPO_ROOT/patches"
 
 if [ ! -f "$HOME_DIR/src/digitize.py" ]; then
   echo "==> Cloning Open-ECG-Digitizer into $HOME_DIR"
@@ -24,16 +24,20 @@ else
   echo "==> Using existing checkout at $HOME_DIR"
 fi
 
-echo "==> Applying portability patch"
-if git -C "$HOME_DIR" apply --check "$PATCH" 2>/dev/null; then
-  git -C "$HOME_DIR" apply "$PATCH"
-  echo "    applied"
-elif git -C "$HOME_DIR" apply --reverse --check "$PATCH" 2>/dev/null; then
-  echo "    already applied, skipping"
-else
-  echo "    WARNING: patch did not apply cleanly."
-  echo "    Upstream may have changed. Review $PATCH by hand."
-fi
+# In filename order, because each patch is a diff against the tree the previous ones
+# left behind: applying 0002 to an unpatched checkout is not the same file.
+for PATCH in "$PATCH_DIR"/[0-9]*.patch; do
+  echo "==> Applying $(basename "$PATCH")"
+  if git -C "$HOME_DIR" apply --check "$PATCH" 2>/dev/null; then
+    git -C "$HOME_DIR" apply "$PATCH"
+    echo "    applied"
+  elif git -C "$HOME_DIR" apply --reverse --check "$PATCH" 2>/dev/null; then
+    echo "    already applied, skipping"
+  else
+    echo "    WARNING: patch did not apply cleanly."
+    echo "    Upstream may have changed. Review $PATCH by hand."
+  fi
+done
 
 echo
 echo "Digitizer ready at: $HOME_DIR"
