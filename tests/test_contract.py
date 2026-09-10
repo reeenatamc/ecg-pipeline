@@ -180,6 +180,59 @@ class TestFailureReason(unittest.TestCase):
 
         self.assertEqual(failure_reason(result), "server-error")
 
+    def test_a_print_with_no_full_length_lead_says_so(self):
+        # A plain 3x4 print: every lead runs 2.5 s and none runs the full ten. The
+        # pipeline read it perfectly -- layout identified, all twelve leads recovered --
+        # and still cannot report a rhythm. Before this cause existed it came out as
+        # "unexpected", which reaches a screen as "something went wrong, try again", and
+        # retrying a sheet that has no rhythm strip cannot ever succeed.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "digitization": {"lead_layout": "standard_3x4"},
+            "signal_quality": {
+                "leads_with_signal": list(CANONICAL_LEADS),
+                "full_length_leads": [],
+                "needs_full_length": True,
+            },
+        }
+
+        self.assertEqual(failure_reason(result), "no-full-length-lead")
+
+    def test_a_pathway_that_needs_no_full_length_lead_does_not_raise_it(self):
+        # The morphology pathway reads a representative beat and never needs a continuous
+        # strip, so a 3x4 is not short of anything for it. Reporting a missing rhythm
+        # strip there would send the user to find a sheet they do not need.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "digitization": {"lead_layout": "standard_3x4"},
+            "signal_quality": {
+                "leads_with_signal": ["II"],
+                "full_length_leads": [],
+                "needs_full_length": False,
+            },
+        }
+
+        self.assertEqual(failure_reason(result), "unexpected")
+
+    def test_an_unidentified_layout_wins_over_a_missing_strip(self):
+        # With the wrong grid, a rhythm strip that is on the paper is not where the
+        # digitizer looked. Naming the strip would describe a symptom and send the user to
+        # find a different sheet, when the sheet was never the problem.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "digitization": {"lead_layout": "Unknown layout"},
+            "signal_quality": {
+                "leads_with_signal": ["II"],
+                "full_length_leads": [],
+                "needs_full_length": True,
+            },
+        }
+
+        self.assertEqual(failure_reason(result), "unsupported-mount")
+
 
 class TestToAnalysis(unittest.TestCase):
     def test_a_degraded_result_is_not_handed_over_as_ready(self):

@@ -160,6 +160,21 @@ def failure_reason(result: dict[str, Any]) -> str | None:
     layout = (result.get("digitization") or {}).get("lead_layout")
     if layout == "Unknown layout":
         return "unsupported-mount"
+
+    # Read after the layout, because an unidentified layout explains this one too: with
+    # the wrong grid, a rhythm strip that is on the paper is not where the digitizer
+    # looked for it. Named only when the layout was identified, so it means what it says.
+    #
+    # This is the cause a plain 3x4 print produces. Every lead is printed for 2.5 s, no
+    # lead runs the full ten, and the rhythm pathway has nothing continuous to read. It is
+    # the pipeline working, not failing -- but until this existed it came out as
+    # "unexpected", which reaches a screen as "something went wrong, try again". Retrying
+    # a sheet that carries no full-length lead cannot ever succeed, so that message sent
+    # the user to press a button forever. Measured on a 1800x649 print: layout
+    # standard_3x4 identified cleanly, 12 of 12 leads recovered, all twelve at 25%.
+    if quality.get("needs_full_length") and quality.get("full_length_leads") == []:
+        return "no-full-length-lead"
+
     return "unexpected"
 
 
