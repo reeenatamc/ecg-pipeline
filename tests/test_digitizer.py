@@ -35,8 +35,12 @@ class TestDigitizerHome(unittest.TestCase):
             with self.assertRaises(digitizer.DigitizerNotFound) as ctx:
                 digitizer.digitizer_home()
 
+        # Compared as a path and not as text. The message echoes the value back through
+        # Path, which spells separators the way the platform does, so asserting the
+        # literal string only passed where that spelling happened to match the one
+        # written here. The test was checking the operating system, not the message.
         message = str(ctx.exception)
-        self.assertIn("/definitely/not/here", message)
+        self.assertIn(str(Path("/definitely/not/here")), message)
         self.assertNotIn("Could not find an Open-ECG-Digitizer checkout at", message)
 
     def test_falls_back_to_the_sibling_when_no_env_var_is_set(self):
