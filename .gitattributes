@@ -1,0 +1,3 @@
+# A patch is byte-exact input for `git apply`: converting its line endings on
+# checkout makes it fail to apply, and on Windows that is the default behaviour.
+patches/*.patch -text
