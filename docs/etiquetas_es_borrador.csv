@@ -1,0 +1,151 @@
+label_en,propuesta_es,categoria,mostrar_al_usuario,nota
+ABNORMAL ECG,ECG anormal,resumen,no,Enunciado de resumen/comparación global del trazado; no debe mostrarse junto a hallazgos específicos
+NORMAL SINUS RHYTHM,ritmo sinusal normal,ritmo,si,Diagnóstico de ritmo de base; terminología estándar
+NORMAL ECG,ECG normal,resumen,no,Enunciado de resumen global del trazado; no debe mostrarse junto a hallazgos específicos
+SINUS RHYTHM,ritmo sinusal,ritmo,si,Término estándar (glosario SEC)
+SINUS BRADYCARDIA,bradicardia sinusal,ritmo,si,Término estándar
+ATRIAL FIBRILLATION,fibrilación auricular,ritmo,si,Término dado en el enunciado; guía ESC 2020/2024 FA (Rev Esp Cardiol)
+SINUS TACHYCARDIA,taquicardia sinusal,ritmo,si,Término estándar
+otherwise normal ecg,"por lo demás, ECG normal",resumen,no,Fragmento de resumen que acompaña a otro hallazgo menor; no es un hallazgo en sí mismo
+LEFT AXIS DEVIATION,desviación del eje a la izquierda,eje,si,Término dado en el enunciado de la tarea
+PREMATURE VENTRICULAR COMPLEXES,extrasístoles ventriculares,ritmo,si,Término dado en el enunciado; equivalente 'complejos ventriculares prematuros' también en uso
+BORDERLINE ECG,ECG límite,resumen,no,"Enunciado de resumen/incertidumbre sobre el trazado completo, no un hallazgo específico"
+RIGHT BUNDLE BRANCH BLOCK,bloqueo de rama derecha,conduccion,si,Término dado en el enunciado de la tarea
+SEPTAL INFARCT,infarto septal,isquemia_infarto,si,Localización estándar del infarto
+LEFT ATRIAL ENLARGEMENT,crecimiento auricular izquierdo,hipertrofia,si,SEC usa 'crecimiento' y 'agrandamiento' como sinónimos; se prefiere 'crecimiento auricular izquierdo'
+NONSPECIFIC T WAVE ABNORMALITY,anomalía inespecífica de la onda T,repolarizacion,si,Término estándar de electrocardiografía
+LOW VOLTAGE QRS,bajo voltaje del QRS,tecnico,si,"Criterio de amplitud con implicación clínica (derrame pericárdico, obesidad, EPOC, amiloidosis)"
+PREMATURE ATRIAL COMPLEXES,extrasístoles auriculares,ritmo,si,Término estándar
+ANTERIOR INFARCT,infarto anterior,isquemia_infarto,si,Localización estándar del infarto
+INCOMPLETE RIGHT BUNDLE BRANCH BLOCK,bloqueo incompleto de rama derecha,conduccion,si,Término estándar
+PREMATURE SUPRAVENTRICULAR COMPLEXES,extrasístoles supraventriculares,ritmo,si,Término estándar
+LEFT BUNDLE BRANCH BLOCK,bloqueo de rama izquierda,conduccion,si,Término estándar
+NONSPECIFIC T WAVE ABNORMALITY NOW EVIDENT IN,"anomalía inespecífica de la onda T, ahora evidente en",repolarizacion,revisar,Fragmento de comparación con un ECG previo (plantilla GE 12SL); requiere lista de derivaciones y trazado previo para tener sentido
+NONSPECIFIC T WAVE ABNORMALITY NO LONGER EVIDENT IN,"anomalía inespecífica de la onda T, ya no evidente en",repolarizacion,revisar,Fragmento de comparación con un ECG previo; no es un hallazgo independiente
+T WAVE INVERSION NOW EVIDENT IN,"inversión de la onda T, ahora evidente en",repolarizacion,revisar,Fragmento de comparación con un ECG previo
+LATERAL INFARCT,infarto lateral,isquemia_infarto,si,Localización estándar del infarto
+NONSPECIFIC ST ABNORMALITY,anomalía inespecífica del segmento ST,repolarizacion,si,Término estándar
+LEFT VENTRICULAR HYPERTROPHY,hipertrofia ventricular izquierda,hipertrofia,si,Término dado en el enunciado de la tarea
+T WAVE INVERSION NO LONGER EVIDENT IN,"inversión de la onda T, ya no evidente en",repolarizacion,revisar,Fragmento de comparación con un ECG previo
+WITH RAPID VENTRICULAR RESPONSE,con respuesta ventricular rápida,ritmo,revisar,"Calificador que acompaña a un ritmo auricular (p. ej. fibrilación auricular); fragmento de plantilla 12SL, no es hallazgo independiente. 'Respuesta ventricular' es término de la guía ESC 2020 de FA"
+QT HAS SHORTENED,el QT se ha acortado,repolarizacion,revisar,Fragmento de comparación serial con un ECG previo
+QT HAS LENGTHENED,el QT se ha prolongado,repolarizacion,revisar,Fragmento de comparación serial con un ECG previo
+FUSION COMPLEXES,complejos de fusión,ritmo,si,Término estándar de arritmología
+ATRIAL FLUTTER,aleteo auricular,ritmo,si,Término dado en el enunciado de la tarea
+MARKED SINUS BRADYCARDIA,bradicardia sinusal marcada,ritmo,si,Término estándar
+WITH SINUS ARRHYTHMIA,con arritmia sinusal,ritmo,revisar,Fragmento calificador que se agrega a un ritmo sinusal de base
+NONSPECIFIC ST AND T WAVE ABNORMALITY,anomalía inespecífica del ST y de la onda T,repolarizacion,si,Término estándar
+LEFT ANTERIOR FASCICULAR BLOCK,bloqueo fascicular anterior izquierdo,conduccion,si,"Forma preferida por el glosario SEC; también muy usado 'hemibloqueo anterior izquierdo' (HBAI), a decidir con el cardiólogo"
+RIGHT AXIS DEVIATION,desviación del eje a la derecha,eje,si,Término dado en el enunciado de la tarea
+ECTOPIC ATRIAL RHYTHM,ritmo auricular ectópico,ritmo,si,Término estándar
+UNDETERMINED RHYTHM,ritmo indeterminado,ritmo,si,Término estándar
+ANTEROSEPTAL INFARCT,infarto anteroseptal,isquemia_infarto,si,Localización estándar del infarto
+RIGHTWARD AXIS,eje desviado hacia la derecha,eje,revisar,"En la plantilla 12SL es un grado menor/distinto de 'RIGHT AXIS DEVIATION'; en español no hay dos términos establecidos y separados, el cardiólogo debe decidir si se diferencian o se fusionan"
+ST NOW DEPRESSED IN,el segmento ST está ahora descendido en,repolarizacion,revisar,Fragmento de comparación con un ECG previo
+WITH SHORT PR,con PR corto,conduccion,revisar,Fragmento calificador (p. ej. preexcitación); no es hallazgo independiente
+WITH MARKED SINUS ARRHYTHMIA,con arritmia sinusal marcada,ritmo,revisar,Fragmento calificador
+ST NO LONGER DEPRESSED IN,el segmento ST ya no está descendido en,repolarizacion,revisar,Fragmento de comparación con un ECG previo
+INVERTED T WAVES HAVE REPLACED NONSPECIFIC T WAVE ABNORMALITY IN,las ondas T invertidas han reemplazado a la anomalía inespecífica de la onda T en,repolarizacion,revisar,Fragmento largo de comparación con un ECG previo
+NON-SPECIFIC CHANGE IN ST SEGMENT IN,cambio inespecífico del segmento ST en,repolarizacion,revisar,Fragmento que requiere lista de derivaciones para tener sentido
+NONSPECIFIC T WAVE ABNORMALITY HAS REPLACED INVERTED T WAVES IN,la anomalía inespecífica de la onda T ha reemplazado a las ondas T invertidas en,repolarizacion,revisar,Fragmento largo de comparación con un ECG previo
+JUNCTIONAL RHYTHM,ritmo de la unión,ritmo,si,También llamado 'ritmo nodal'; se prefiere 'ritmo de la unión (AV)'
+ELECTRONIC ATRIAL PACEMAKER,marcapasos electrónico auricular,marcapasos,si,Término estándar
+ABERRANT CONDUCTION,conducción aberrante,conduccion,si,Término estándar
+ELECTRONIC VENTRICULAR PACEMAKER,marcapasos electrónico ventricular,marcapasos,si,Término estándar
+T WAVE INVERSION LESS EVIDENT IN,"inversión de la onda T, menos evidente en",repolarizacion,revisar,Fragmento de comparación con un ECG previo
+ANTEROLATERAL INFARCT,infarto anterolateral,isquemia_infarto,si,Localización estándar del infarto
+WITH REPOLARIZATION ABNORMALITY,con anomalía de la repolarización,repolarizacion,revisar,Fragmento calificador que se agrega a otro hallazgo (p. ej. un bloqueo de rama)
+RSR' OR QR PATTERN IN V1 SUGGESTS RIGHT VENTRICULAR CONDUCTION DELAY,"patrón RSR' o QR en V1, sugestivo de retraso de la conducción ventricular derecha",conduccion,si,"Enunciado técnico completo, traducido de forma cercana al original; verificar si se prefiere una forma más breve"
+T WAVE INVERSION MORE EVIDENT IN,"inversión de la onda T, más evidente en",repolarizacion,revisar,Fragmento de comparación con un ECG previo
+WIDE QRS RHYTHM,ritmo con QRS ancho,ritmo,si,Término estándar
+WITH PREMATURE VENTRICULAR OR ABERRANTLY CONDUCTED COMPLEXES,con extrasístoles ventriculares o conducidas de forma aberrante,ritmo,revisar,Fragmento calificador que se agrega a un ritmo de base
+RIGHT ATRIAL ENLARGEMENT,crecimiento auricular derecho,hipertrofia,si,Término estándar
+INFERIOR INFARCT,infarto inferior,isquemia_infarto,si,Localización estándar del infarto
+INCOMPLETE LEFT BUNDLE BRANCH BLOCK,bloqueo incompleto de rama izquierda,conduccion,si,Término estándar
+VOLTAGE CRITERIA FOR LEFT VENTRICULAR HYPERTROPHY,criterios de voltaje para hipertrofia ventricular izquierda,hipertrofia,si,Término estándar
+OR DIGITALIS EFFECT,o efecto digitálico,repolarizacion,revisar,"Fragmento de diagnóstico diferencial de la plantilla 12SL ('... OR DIGITALIS EFFECT'); 'efecto digitálico' es el término estándar en español, pero el fragmento no tiene sentido aislado"
+BIFASCICULAR BLOCK,bloqueo bifascicular,conduccion,si,Término estándar
+ST NO LONGER ELEVATED IN,el segmento ST ya no está elevado en,repolarizacion,revisar,Fragmento de comparación con un ECG previo
+WITH SLOW VENTRICULAR RESPONSE,con respuesta ventricular lenta,ritmo,revisar,Fragmento calificador
+ST ELEVATION NOW PRESENT IN,elevación del ST ahora presente en,repolarizacion,revisar,Fragmento de comparación con un ECG previo; puede indicar un evento agudo y requiere revisión prioritaria del cardiólogo
+PREMATURE ECTOPIC COMPLEXES,extrasístoles ectópicas,ritmo,si,Término genérico de origen no especificado (auricular o ventricular)
+LEFT POSTERIOR FASCICULAR BLOCK,bloqueo fascicular posterior izquierdo,conduccion,si,También llamado 'hemibloqueo posterior izquierdo'
+T WAVE AMPLITUDE HAS DECREASED IN,la amplitud de la onda T ha disminuido en,repolarizacion,revisar,Fragmento de comparación con un ECG previo
+WITH A COMPETING JUNCTIONAL PACEMAKER,con un marcapasos de la unión competitivo,ritmo,revisar,"Se refiere a un marcapasos fisiológico (la unión AV), no a un dispositivo electrónico; fragmento calificador"
+RIGHT SUPERIOR AXIS DEVIATION,desviación del eje hacia la derecha y superior,eje,revisar,Cuadrante de eje poco frecuente en la bibliografía en español; sin equivalente único establecido
+BIATRIAL ENLARGEMENT,crecimiento biauricular,hipertrofia,si,Término estándar
+VENTRICULAR-PACED RHYTHM,ritmo de marcapasos ventricular,marcapasos,si,Término estándar
+ATRIAL-PACED RHYTHM,ritmo de marcapasos auricular,marcapasos,si,Término estándar
+T WAVE AMPLITUDE HAS INCREASED IN,la amplitud de la onda T ha aumentado en,repolarizacion,revisar,Fragmento de comparación con un ECG previo
+WITH QRS WIDENING,con ensanchamiento del QRS,conduccion,revisar,Fragmento calificador
+WITH 1ST DEGREE AV BLOCK,con bloqueo auriculoventricular de primer grado,conduccion,revisar,Fragmento calificador; el término del hallazgo en sí es 'bloqueo auriculoventricular de primer grado' (dado en el enunciado)
+PROLONGED QT,QT prolongado,repolarizacion,si,Término estándar
+WITH PROLONGED AV CONDUCTION,con conducción auriculoventricular prolongada,conduccion,revisar,"Fragmento calificador, cercano en significado a 'WITH 1ST DEGREE AV BLOCK'"
+RIGHT VENTRICULAR HYPERTROPHY,hipertrofia ventricular derecha,hipertrofia,si,Término estándar
+WITH QRS WIDENING AND REPOLARIZATION ABNORMALITY,con ensanchamiento del QRS y anomalía de la repolarización,conduccion,revisar,Fragmento calificador compuesto
+ATRIAL-SENSED VENTRICULAR-PACED RHYTHM,ritmo de marcapasos con sensado auricular y estimulación ventricular,marcapasos,si,Describe el modo de estimulación (tipo VAT); término técnico de electroestimulación
+AV SEQUENTIAL OR DUAL CHAMBER ELECTRONIC PACEMAKER,marcapasos electrónico secuencial AV o bicameral,marcapasos,si,Término estándar de electroestimulación
+PULMONARY DISEASE PATTERN,patrón de enfermedad pulmonar,otro,revisar,En electrocardiografía también se describe como 'patrón de cor pulmonale' o 'patrón de EPOC'; sin término único consolidado
+ACUTE MI / STEMI,infarto agudo de miocardio con elevación del ST (IAMCEST),isquemia_infarto,si,"IAMCEST es el término dado en el enunciado de la tarea (guía ESC NSTE-ACS/STEMI, Rev Esp Cardiol)"
+INFERIOR-POSTERIOR INFARCT,infarto inferoposterior,isquemia_infarto,si,Localización estándar del infarto
+NONSPECIFIC INTRAVENTRICULAR CONDUCTION DELAY,retraso inespecífico de la conducción intraventricular,conduccion,si,Confirmado en Rev Esp Cardiol (estudio OFRECE) como término estándar
+PREMATURE VENTRICULAR AND FUSION COMPLEXES,extrasístoles ventriculares y complejos de fusión,ritmo,si,Término estándar
+IN A PATTERN OF BIGEMINY,en patrón de bigeminismo,ritmo,revisar,Fragmento calificador que se agrega a extrasístoles; 'bigeminismo' confirmado como término estándar
+AV DUAL-PACED RHYTHM,ritmo de marcapasos bicameral (AV),marcapasos,si,Término estándar
+SUPRAVENTRICULAR TACHYCARDIA,taquicardia supraventricular,ritmo,si,Término estándar
+VENTRICULAR-PACED COMPLEXES,complejos de marcapasos ventricular,marcapasos,si,Término estándar
+WIDE QRS TACHYCARDIA,taquicardia con QRS ancho,ritmo,si,Término estándar
+RSR' PATTERN IN V1,patrón RSR' en V1,conduccion,si,Hallazgo inespecífico (puede ser variante normal o bloqueo incompleto de rama derecha); mostrar con cautela
+ST LESS DEPRESSED IN,el segmento ST está menos descendido en,repolarizacion,revisar,Fragmento de comparación con un ECG previo
+VENTRICULAR TACHYCARDIA,taquicardia ventricular,ritmo,si,Término estándar
+EARLY REPOLARIZATION,repolarización precoz,repolarizacion,si,Término estándar
+ST MORE DEPRESSED IN,el segmento ST está más descendido en,repolarizacion,revisar,Fragmento de comparación con un ECG previo
+ANTEROLATERAL LEADS,derivaciones anterolaterales,tecnico,revisar,Fragmento de lista de derivaciones de la plantilla 12SL; no es un hallazgo independiente
+ELECTRONIC DEMAND PACING,marcapasos electrónico a demanda,marcapasos,si,Término estándar
+RBBB AND LEFT ANTERIOR FASCICULAR BLOCK,bloqueo de rama derecha y bloqueo fascicular anterior izquierdo,conduccion,si,"Combinación de dos bloqueos, cada uno con término estándar propio"
+LATERAL INJURY PATTERN,patrón de lesión lateral,isquemia_infarto,si,'Lesión' (subepicárdica/ST elevado) es el término clásico de la escuela electrocardiográfica en español
+BIVENTRICULAR PACEMAKER DETECTED,marcapasos biventricular detectado,marcapasos,si,Término estándar (terapia de resincronización cardiaca)
+SUSPECT UNSPECIFIED PACEMAKER FAILURE,sospecha de falla del marcapasos no especificada,marcapasos,si,'Falla' (uso habitual en Ecuador/Latinoamérica) equivalente a 'fallo' (España); hallazgo de alta prioridad clínica
+WOLFF-PARKINSON-WHITE,síndrome de Wolff-Parkinson-White,conduccion,si,Término estándar
+WITH VENTRICULAR ESCAPE COMPLEXES,con complejos de escape ventricular,ritmo,revisar,Fragmento calificador
+INFERIOR INJURY PATTERN,patrón de lesión inferior,isquemia_infarto,si,Término clásico de lesión subepicárdica
+CONSIDER RIGHT VENTRICULAR INVOLVEMENT IN ACUTE INFERIOR INFARCT,considerar compromiso del ventrículo derecho en el infarto inferior agudo,isquemia_infarto,revisar,Enunciado completo de tipo advertencia/sugerencia clínica ('considerar'); el cardiólogo debe decidir el grado de literalidad al mostrarlo
+ST ELEVATION HAS REPLACED ST DEPRESSION IN,la elevación del ST ha reemplazado al descenso del ST en,repolarizacion,revisar,Fragmento largo de comparación con un ECG previo
+NONSPECIFIC INTRAVENTRICULAR BLOCK,bloqueo intraventricular inespecífico,conduccion,si,"Término estándar, cercano a 'retraso inespecífico de la conducción intraventricular'"
+MASKED BY FASCICULAR BLOCK,enmascarado por bloqueo fascicular,conduccion,revisar,Fragmento calificador que se agrega a otro hallazgo (p. ej. un infarto no detectable por el bloqueo)
+PEDIATRIC ECG ANALYSIS,análisis de ECG pediátrico,tecnico,no,"Indicador técnico del modo de análisis usado por el modelo, no un hallazgo clínico"
+BLOCKED,bloqueada,tecnico,revisar,Fragmento (p. ej. 'extrasístole auricular bloqueada'); sin contexto no es interpretable
+WITH UNDETERMINED RHYTHM IRREGULARITY,con irregularidad del ritmo indeterminada,ritmo,revisar,Fragmento calificador
+LEFTWARD AXIS,eje desviado hacia la izquierda,eje,revisar,Grado menor/distinto de 'LEFT AXIS DEVIATION' en la plantilla 12SL; sin dos términos establecidos y separados en español
+WITH 2ND DEGREE SA BLOCK MOBITZ I,con bloqueo sinoauricular de segundo grado tipo Mobitz I,conduccion,revisar,"Bloqueo sinoauricular (no auriculoventricular); término menos frecuente en la bibliografía en español, verificar con el cardiólogo"
+ACUTE,agudo,tecnico,revisar,Fragmento calificador que se antepone a otro diagnóstico (p. ej. 'infarto anterior agudo')
+ABNORMAL LEFT AXIS DEVIATION,desviación anormal del eje a la izquierda,eje,si,Término estándar
+WITH COMPLETE HEART BLOCK,con bloqueo auriculoventricular completo,conduccion,revisar,'Heart block' se traduce aquí como bloqueo AV de tercer grado (completo); fragmento calificador
+NO P-WAVES FOUND,no se identifican ondas P,ritmo,si,Hallazgo descriptivo directo (p. ej. compatible con fibrilación auricular u otro ritmo sin actividad auricular organizada)
+ST LESS ELEVATED IN,el segmento ST está menos elevado en,repolarizacion,revisar,Fragmento de comparación con un ECG previo
+WITH RETROGRADE CONDUCTION,con conducción retrógrada,conduccion,revisar,Fragmento calificador
+ST MORE ELEVATED IN,el segmento ST está más elevado en,repolarizacion,revisar,Fragmento de comparación con un ECG previo
+JUNCTIONAL BRADYCARDIA,bradicardia de la unión,ritmo,si,Término estándar
+WITH VARIABLE AV BLOCK,con bloqueo auriculoventricular variable,conduccion,revisar,Fragmento calificador
+ANTERIOR INJURY PATTERN,patrón de lesión anterior,isquemia_infarto,si,Término clásico de lesión subepicárdica
+WITH JUNCTIONAL ESCAPE COMPLEXES,con complejos de escape de la unión,ritmo,revisar,Fragmento calificador
+ACUTE MI,infarto agudo de miocardio,isquemia_infarto,si,Término estándar; sin especificar STEMI/NSTEMI a diferencia de 'ACUTE MI / STEMI'
+ACUTE PERICARDITIS,pericarditis aguda,otro,si,No es isquemia ni infarto; se agrupa aparte porque su hallazgo en ECG (elevación difusa del ST) es un diagnóstico diferencial del IAMCEST
+POSTERIOR INFARCT,infarto posterior,isquemia_infarto,si,Localización estándar del infarto
+IDIOVENTRICULAR RHYTHM,ritmo idioventricular,ritmo,si,Término estándar
+WITH 2ND DEGREE SA BLOCK MOBITZ II,con bloqueo sinoauricular de segundo grado tipo Mobitz II,conduccion,revisar,"Bloqueo sinoauricular (no auriculoventricular); verificar con el cardiólogo, ver nota de Mobitz I"
+R IN AVL,R en aVL,tecnico,revisar,Fragmento de un criterio de voltaje (p. ej. Cornell/Sokolow-Lyon) referido a la derivación aVL; sin sentido como hallazgo aislado
+SINUS/ATRIAL CAPTURE,captura sinusal/auricular,ritmo,revisar,Término de electrofisiología (latido capturado durante disociación AV u otro ritmo competitivo); poco intuitivo para un lector no especializado
+AV DUAL-PACED COMPLEXES,complejos de marcapasos bicameral (AV),marcapasos,si,Término estándar
+INFEROLATERAL INJURY PATTERN,patrón de lesión inferolateral,isquemia_infarto,si,Término clásico de lesión subepicárdica
+RBBB AND LEFT POSTERIOR FASCICULAR BLOCK,bloqueo de rama derecha y bloqueo fascicular posterior izquierdo,conduccion,si,"Combinación de dos bloqueos, cada uno con término estándar propio"
+ANTEROLATERAL INJURY PATTERN,patrón de lesión anterolateral,isquemia_infarto,si,Término clásico de lesión subepicárdica
+ATRIAL-PACED COMPLEXES,complejos de marcapasos auricular,marcapasos,si,Término estándar
+WITH SINUS PAUSE,con pausa sinusal,ritmo,revisar,Fragmento calificador
+BIVENTRICULAR HYPERTROPHY,hipertrofia biventricular,hipertrofia,si,Término estándar
+ABNORMAL RIGHT AXIS DEVIATION,desviación anormal del eje a la derecha,eje,si,Término estándar
+SUPRAVENTRICULAR COMPLEXES,complejos supraventriculares,ritmo,si,Término estándar
+WITH 2ND DEGREE AV BLOCK MOBITZ I,con bloqueo auriculoventricular de segundo grado tipo Mobitz I,conduccion,revisar,Fragmento calificador; confirmado 'Mobitz I / Wenckebach' como término estándar
+WITH 2:1 AV CONDUCTION,con conducción auriculoventricular 2:1,conduccion,revisar,"Fragmento calificador, típico del aleteo auricular o del bloqueo AV 2:1"
+WITH AV DISSOCIATION,con disociación auriculoventricular,conduccion,revisar,Fragmento calificador
+MULTIFOCAL ATRIAL TACHYCARDIA,taquicardia auricular multifocal,ritmo,si,Término estándar
