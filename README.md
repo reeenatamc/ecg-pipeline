@@ -328,7 +328,18 @@ Two things it deliberately does not do:
 - **Labels pass through as the model produced them** (`SINUS RHYTHM`, not a phrase for a
   patient to read). Rewriting them is a clinical and product decision. `docs/etiquetas_es_borrador.csv`
   and `docs/etiquetas_es_borrador.md` are a first Spanish-language draft of that decision, for
-  a cardiologist to correct line by line; nothing in the pipeline reads them yet.
+  a cardiologist to correct line by line; the pipeline does not read the Spanish text, only
+  the `categoria` column (see below).
+
+Each observation also carries `category`, one of the 10 fixed slugs the CSV's `categoria`
+column assigns every label to (`ritmo`, `conduccion`, `repolarizacion`, `isquemia_infarto`,
+`marcapasos`, `eje`, `hipertrofia`, `tecnico`, `resumen`, `otro`), so the app can group
+findings without embedding clinical judgement of its own. `contract.observation_category`
+looks the label up in `ecg_pipeline/label_categories.py`, generated from the CSV by
+`scripts/generate_label_categories.py` -- rerun that script after editing the CSV rather
+than hand-patching the generated module. A label the model emits that the CSV does not
+cover falls back to `otro` rather than raising: the model's label set can move ahead of the
+draft, and a response should never fail over one unclassified finding.
 
 A `degraded` result is emitted as `status: "failed"`, not as observations. The contract has
 `ready` and `failed` and nothing in between, so a reading that must not be trusted goes
