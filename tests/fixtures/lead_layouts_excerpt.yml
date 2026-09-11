@@ -1,0 +1,70 @@
+# A small excerpt of Open-ECG-Digitizer's src/config/lead_layouts_all.yml (CC BY-SA 4.0,
+# Ahus-AIM/Open-ECG-Digitizer), kept only to exercise pipeline._layout_definitions against
+# real template shapes without depending on a live checkout at test time. Copied as data,
+# not code -- see the licensing note in ecg_pipeline/digitizer.py.
+
+cabrera_6x1_limb:
+  description: "6x1 cabrera layout with limb leads"
+  layout:
+    rows: 6
+    cols: 1
+  leads: ["aVL", "I", "-aVR", "II", "aVF", "III"]
+  rhythm_leads: []
+  total_rows: 6
+
+standard_3x1:
+  description: "3x1 standard layout"
+  layout:
+    rows: 3
+    cols: 1
+  leads: ["I", "II", "III"]
+  rhythm_leads: []
+  total_rows: 3
+
+standard_12x1:
+  description: "12x1 standard layout"
+  layout:
+    rows: 12
+    cols: 1
+  leads: ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+  rhythm_leads: []
+  total_rows: 12
+
+standard_6x2:
+  description: "6x2 standard layout"
+  layout:
+    rows: 6
+    cols: 2
+  leads:
+    - ["I", "V1"]
+    - ["II", "V2"]
+    - ["III", "V3"]
+    - ["aVR", "V4"]
+    - ["aVL", "V5"]
+    - ["aVF", "V6"]
+  rhythm_leads: []
+  total_rows: 6
+
+standard_3x4_with_r1:
+  description: "3x4 standard layout with 1 wildcard rhythm lead"
+  layout:
+    rows: 3
+    cols: 4
+  leads:
+    - ["I", "aVR", "V1", "V4"]
+    - ["II", "aVL", "V2", "V5"]
+    - ["III", "aVF", "V3", "V6"]
+  rhythm_leads: ["Any"]
+  total_rows: 4
+
+standard_3x4_with_r3:
+  description: "3x4 standard layout with 3 wildcard rhythm leads"
+  layout:
+    rows: 3
+    cols: 4
+  leads:
+    - ["I", "aVR", "V1", "V4"]
+    - ["II", "aVL", "V2", "V5"]
+    - ["III", "aVF", "V3", "V6"]
+  rhythm_leads: ["Any", "Any", "Any"]
+  total_rows: 6
