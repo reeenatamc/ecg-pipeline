@@ -204,5 +204,43 @@ class TestInterpretCsvDefaultThresholds(unittest.TestCase):
         self.assertEqual(result["threshold_source"], "per-class")
 
 
+class TestInterpretRhythmLeadSelection(unittest.TestCase):
+    """interpret_csv's rhythm_leads (through interpret_rhythm/select_rhythm_leads) is where
+    assess_quality's lead selection actually shows up in a result -- see test_quality.py for
+    the selection logic itself.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.csv_path = Path(self.tmpdir.name) / "ecg_timeseries_canonical.csv"
+
+    def test_v1_is_left_out_of_rhythm_leads_when_a_preferred_strip_is_present(self):
+        # The realistic 3x4-with-rhythm-strips shape: II, V1 and V5 all full length. Only
+        # the preferred ones (II, V5) end up in rhythm_leads and therefore in the averaged
+        # result; V1 is reported as available (signal_quality) but not used.
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
+        write_canonical_csv(self.csv_path, coverage)
+
+        with mock.patch.object(interpret_ecg, "THRESHOLDS_DIR", self.tmpdir.name):
+            result = interpret_csv(str(self.csv_path), pathway="rhythm", model=FakeModel())
+
+        self.assertEqual(result["rhythm_leads"], ["II", "V5"])
+        self.assertEqual(result["signal_quality"]["full_length_leads"], ["II", "V5", "V1"])
+        self.assertTrue(any("V1" in w and "left out" in w for w in result["warnings"]))
+
+    def test_v1_alone_still_drives_rhythm_leads(self):
+        # No preferred lead reached full length, so the fallback (every full-length lead)
+        # applies and V1 is used, same as select_rhythm_leads on its own.
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"V1": 1.0}
+        write_canonical_csv(self.csv_path, coverage)
+
+        with mock.patch.object(interpret_ecg, "THRESHOLDS_DIR", self.tmpdir.name):
+            result = interpret_csv(str(self.csv_path), pathway="rhythm", model=FakeModel())
+
+        self.assertEqual(result["rhythm_leads"], ["V1"])
+        self.assertFalse(result["degraded"])
+
+
 if __name__ == "__main__":
     unittest.main()

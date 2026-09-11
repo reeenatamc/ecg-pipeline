@@ -38,16 +38,18 @@ class TestAssessQuality(unittest.TestCase):
         q = assess_quality(canonical, names)
 
         self.assertFalse(q["degraded"])
-        self.assertEqual(q["warnings"], [])
-        # V1 is still selected and still averaged into the rhythm ensemble -- it is just no
-        # longer *preferred*, so it sorts after II/V5 rather than between them. See
+        # V1 also reached full length and is still reported as available
+        # (``full_length_leads``), but is no longer averaged into the rhythm ensemble
+        # (``selected_leads``) now that II and V5 -- both preferred -- are present. See
         # PREFERRED_RHYTHM_LEADS and CONVENTIONAL_STRIP_LEADS in waveform.py.
         self.assertEqual(q["full_length_leads"], ["II", "V5", "V1"])
-        self.assertEqual(q["selected_leads"], ["II", "V5", "V1"])
+        self.assertEqual(q["selected_leads"], ["II", "V5"])
+        # The omission is never silent: a warning names what was left out and why.
+        self.assertTrue(any("V1" in w and "left out" in w for w in q["warnings"]))
 
     def test_v1_only_full_length_lead_is_still_usable(self):
         # A print whose only strip is V1 (no II, no V5 reaching full length) must still be
-        # readable: assess_quality falls back to any full-length lead when none of the
+        # readable: assess_quality falls back to every full-length lead when none of the
         # preferred ones is present, which is exactly what a V1-only strip is.
         canonical, names = frame({l: 0.25 for l in CANONICAL_LEADS} | {"V1": 1.0})
         q = assess_quality(canonical, names)
@@ -55,15 +57,38 @@ class TestAssessQuality(unittest.TestCase):
         self.assertFalse(q["degraded"])
         self.assertEqual(q["full_length_leads"], ["V1"])
         self.assertEqual(q["selected_leads"], ["V1"])
+        self.assertEqual(q["warnings"], [])  # nothing was left out -- V1 was all there was
         self.assertEqual(select_rhythm_leads(canonical, names), ["V1"])
+
+    def test_an_unconventional_strip_alone_is_still_usable(self):
+        # Same fallback as V1-only, for a lead that is not even a conventional strip lead
+        # (gate 5 in pipeline.py is what flags that separately; assess_quality itself just
+        # reads whatever full-length signal exists).
+        canonical, names = frame({l: 0.25 for l in CANONICAL_LEADS} | {"aVF": 1.0})
+        q = assess_quality(canonical, names)
+
+        self.assertFalse(q["degraded"])
+        self.assertEqual(q["selected_leads"], ["aVF"])
+
+    def test_preferred_rhythm_leads_are_the_only_ones_selected(self):
+        # Incidental full-length leads (I, aVR) are still reported as available but are not
+        # averaged into the ensemble once a preferred lead (II or V5) is present -- only
+        # ordering used to distinguish them; now it is inclusion.
+        canonical, names = frame({"I": 1.0, "V5": 1.0, "aVR": 1.0, "II": 1.0})
+        q = assess_quality(canonical, names)
+
+        self.assertEqual(q["selected_leads"], ["II", "V5"])
+        self.assertEqual(sorted(q["full_length_leads"]), ["I", "II", "V5", "aVR"])
+        self.assertTrue(any("I" in w and "aVR" in w for w in q["warnings"]))
 
     def test_preferred_rhythm_leads_come_first(self):
         canonical, names = frame({"I": 1.0, "V5": 1.0, "aVR": 1.0, "II": 1.0})
         q = assess_quality(canonical, names)
 
-        # II and V5 are preferred rhythm leads and must precede the incidental ones.
-        self.assertEqual(q["selected_leads"][:2], ["II", "V5"])
-        self.assertEqual(sorted(q["selected_leads"][2:]), ["I", "aVR"])
+        # II and V5 are preferred rhythm leads and must precede the incidental ones in the
+        # full-length listing, even though only they are actually selected (see above).
+        self.assertEqual(q["full_length_leads"][:2], ["II", "V5"])
+        self.assertEqual(sorted(q["full_length_leads"][2:]), ["I", "aVR"])
 
     def test_no_full_length_lead_degrades_and_warns(self):
         """The regression this suite exists for: a 2.5 s fragment must not pass as a
@@ -145,8 +170,10 @@ class TestAssessQuality(unittest.TestCase):
         self.assertTrue(q["warnings"])
 
     def test_select_rhythm_leads_keeps_its_signature(self):
+        # II is preferred and full length, so it alone is selected; V1 is left out (see
+        # test_full_length_rhythm_strips_are_not_degraded above for the omission warning).
         canonical, names = frame({"II": 1.0, "V1": 1.0})
-        self.assertEqual(select_rhythm_leads(canonical, names), ["II", "V1"])
+        self.assertEqual(select_rhythm_leads(canonical, names), ["II"])
 
 
 class TestNormalization(unittest.TestCase):

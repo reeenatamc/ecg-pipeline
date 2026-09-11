@@ -76,7 +76,7 @@ results = pipeline.run(image_dir="in/", output_dir="out/", pathway="rhythm")
 
 | Pathway | What it does | Trust |
 |---|---|---|
-| `rhythm` (default) | 1-lead model over every full-length rhythm strip (II/V1/V5 per AHA/ACCF/HRS 2007; II/V5 preferred -- see `configs/thresholds/README.md`), opinions averaged | Reliable for rhythm and rate |
+| `rhythm` (default) | 1-lead model over the preferred full-length strip(s) (II/V5; falls back to whichever other conventional strip -- II/V1/V5 per AHA/ACCF/HRS 2007 -- or lead is full length when neither is printed -- see `configs/thresholds/README.md`), opinions averaged | Reliable for rhythm and rate |
 | `1lead` | 1-lead model on one chosen lead | Inspection/debugging |
 | `morphology` | Median beat per lead, phase-aligned across all 12, tiled to 10 s → 12-lead model | Morphology only, **never rhythm** |
 | `12lead` | Per-lead ~2.5 s windows assembled into a montage → 12-lead model | Naive; kept for comparison |

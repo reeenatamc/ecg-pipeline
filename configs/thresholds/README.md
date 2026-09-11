@@ -55,16 +55,28 @@ checkpoint variants (I, II, V1, V5) separately: on rhythm classes all four are c
 0.98, sinus tachycardia 0.99, sinus bradycardia 0.93-0.95), but V1 collapses on morphology
 classes (RIGHT BUNDLE BRANCH BLOCK AUROC 0.53, chance; NORMAL ECG 0.67) while II and V5
 hold 0.80-0.82. The `rhythm` pathway's combined 150-class vector is the *mean* of every
-full-length strip's own vector, so a lead that is fine on rhythm but at chance on morphology
-still dilutes every morphology class in that average when it is averaged in. II and V5 stay
-preferred because both are inside or near the checkpoint's training rotation (see "Why II,
-not I" above); V1 is still a perfectly conventional strip lead per AHA/ACCF/HRS 2007 and a
-V1-only print still gets read -- `assess_quality` falls back to any full-length lead when
-none of the preferred ones is present, so a print whose only strip is V1 still selects V1.
-Gate 5 in `pipeline.py` (unverified rhythm-strip identity) does not use
-`PREFERRED_RHYTHM_LEADS` at all; it uses the separate `CONVENTIONAL_STRIP_LEADS = ("II",
-"V1", "V5")`, because that gate is about whether the strip is a *known* lead, not about how
-well the checkpoint reads it.
+strip's own vector, so a lead that is fine on rhythm but at chance on morphology dilutes
+every morphology class in that average if it is averaged in.
+
+This is not just a reordering: `assess_quality` now actually *excludes* a full-length lead
+that is not in `PREFERRED_RHYTHM_LEADS` whenever at least one preferred lead is also full
+length. On the common shape (a 3x4 print with II, V1 and V5 all printed full length),
+`selected_leads` is `["II", "V5"]`; V1 is still reported in `full_length_leads` (it was
+printed, and it is still a legitimate signal) but is not averaged in, and a warning names it
+and explains why, so the omission is never silent. `PREFERRED_RHYTHM_LEADS` therefore
+controls two things: which leads are averaged when there is a choice, and which one wins
+when there isn't. II and V5 are what gets averaged because both are inside or near the
+checkpoint's training rotation (see "Why II, not I" above).
+
+A V1-only print (or any single unconventional strip, e.g. a wildcard identified as aVF)
+still gets read: `assess_quality` falls back to *every* full-length lead only when *none* of
+the preferred ones is present, so a print whose only strip is V1 still selects V1 alone, not
+degraded, no omission warning (there is nothing to omit). Gate 5 in `pipeline.py` (unverified
+rhythm-strip identity) does not use `PREFERRED_RHYTHM_LEADS` at all; it uses the separate
+`CONVENTIONAL_STRIP_LEADS = ("II", "V1", "V5")`, because that gate is about whether the strip
+is a *known* lead, not about how well the checkpoint reads it -- a V1 strip excluded from the
+rhythm average by the paragraph above is still a verified, non-degrading strip as far as gate
+5 is concerned.
 
 ## Provisional thresholds (fold 10)
 

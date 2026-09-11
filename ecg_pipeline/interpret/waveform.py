@@ -161,12 +161,13 @@ def assess_quality(
     """
     info = lead_windows(canonical, names)
     full = [l for l in CANONICAL_LEADS if l in info and info[l]["coverage"] >= coverage_min]
-    # Every full-length lead is selected and used, preferred ones first: this is about
-    # ordering, not filtering, so a full-length V1 (or any other incidental full-length
-    # lead) is never dropped from the ensemble -- it only sorts after II/V5. A V1-only
-    # print (nothing else reaches full length) still selects V1, because it lands in the
-    # second half of this list, not the branch below that requires ``ordered`` to be empty.
-    ordered = [l for l in PREFERRED_RHYTHM_LEADS if l in full] + [l for l in full if l not in PREFERRED_RHYTHM_LEADS]
+    # Every full-length lead, preferred ones first -- what is AVAILABLE, reported below as
+    # ``full_length_leads`` regardless of which of them actually get used. Not the same list
+    # as ``selected``: see below.
+    full_ordered = [l for l in PREFERRED_RHYTHM_LEADS if l in full] + [
+        l for l in full if l not in PREFERRED_RHYTHM_LEADS
+    ]
+    preferred_full = [l for l in PREFERRED_RHYTHM_LEADS if l in full]
 
     # A lead with no samples at all is not a fallback candidate: selecting it would only
     # push the failure downstream into clean_lead as an "entirely NaN" error.
@@ -175,8 +176,33 @@ def assess_quality(
     warnings: list[str] = []
     gates: list[str] = []
     degraded = False
-    if ordered:
-        selected = ordered
+    if preferred_full:
+        # At least one preferred lead reached full length: use exactly those, not every
+        # full-length lead. interpret_rhythm averages the combined 150-class vector across
+        # whatever ``selected`` holds, and a lead that is fine on rhythm but weak on
+        # morphology (V1: RIGHT BUNDLE BRANCH BLOCK AUROC 0.53, chance, in a local PTB-XL
+        # fold-10 derivation) dilutes every morphology class in that average if it is
+        # averaged in alongside a preferred lead. See configs/thresholds/README.md.
+        selected = preferred_full
+        omitted = [l for l in full if l not in preferred_full]
+        if omitted:
+            plural = len(omitted) > 1
+            warnings.append(
+                f"{', '.join(omitted)} also reached full length but "
+                f"{'were' if plural else 'was'} left out of the rhythm ensemble: only the "
+                f"preferred lead(s) ({', '.join(preferred_full)}) are averaged when at least "
+                f"one of them is full length. A local PTB-XL fold-10 derivation found the "
+                f"1-lead checkpoint reads V1 at chance on morphology classes (RIGHT BUNDLE "
+                f"BRANCH BLOCK AUROC 0.53) despite being fine on rhythm, so including a lead "
+                f"like that would dilute every morphology class in the averaged result -- see "
+                f"configs/thresholds/README.md."
+            )
+    elif full:
+        # No preferred lead is full length, but something else is (a V1-only print, or an
+        # unconventional wildcard strip like aVF): use every full-length lead there is,
+        # exactly as when there was nothing to prefer among. Still not degraded -- a single
+        # full-length strip is a legitimate rhythm-strip reading, whichever lead it is.
+        selected = full_ordered
     elif with_signal:
         selected = [max(with_signal, key=lambda l: with_signal[l]["coverage"])]
         if needs_full_length:
@@ -213,7 +239,7 @@ def assess_quality(
         "coverage": {l: round(info[l]["coverage"], 3) for l in info},
         "leads_with_signal": usable,
         "leads_missing": missing,
-        "full_length_leads": ordered,
+        "full_length_leads": full_ordered,
         "selected_leads": selected,
         "coverage_min": coverage_min,
         "needs_full_length": needs_full_length,
