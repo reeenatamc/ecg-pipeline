@@ -286,7 +286,9 @@ Two things it deliberately does not do:
   delineation, which this pipeline does not do, and `EcgMeasurements` has no partial form.
   Filling PR and QT with anything would be inventing measurements of a patient.
 - **Labels pass through as the model produced them** (`SINUS RHYTHM`, not a phrase for a
-  patient to read). Rewriting them is a clinical and product decision.
+  patient to read). Rewriting them is a clinical and product decision. `docs/etiquetas_es_borrador.csv`
+  and `docs/etiquetas_es_borrador.md` are a first Spanish-language draft of that decision, for
+  a cardiologist to correct line by line; nothing in the pipeline reads them yet.
 
 A `degraded` result is emitted as `status: "failed"`, not as observations. The contract has
 `ready` and `failed` and nothing in between, so a reading that must not be trusted goes
