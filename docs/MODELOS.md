@@ -253,6 +253,15 @@ todo el código.
 
 Se pasan con `--thresholds umbrales.json` (un `{etiqueta: umbral}`) o un `--threshold` plano.
 
+**Ya no hace falta pasarlos a mano.** `interpret_ecg.default_thresholds(pathway)` busca en
+`configs/thresholds/` el archivo que le corresponde al checkpoint de ese pathway
+(`thresholds_1lead_II.json` para `rhythm`/`1lead`, `thresholds_12lead.json` para
+`morphology`/`12lead`; `II` y no `I` porque es la tira que `rhythm` realmente usa, ver
+`configs/thresholds/README.md`) y, si existe, `interpret_csv` lo aplica solo cuando no se
+pasó `--thresholds` ni `--threshold` explícitos. El resultado siempre trae
+`threshold_source` para saber de dónde salió (o si no salió de ninguna parte:
+`"none"`).
+
 ---
 
 ## 5. Tres cosas abiertas que deberías saber

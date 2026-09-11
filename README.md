@@ -122,6 +122,17 @@ time; `scripts/derive_thresholds_colab.ipynb` reproduces that computation on a C
 bandpass upstream uses in fine-tuning helps the pretrained model, and how much the 1-lead
 checkpoint, built for lead I, loses on the II/V1/V5 strips the `rhythm` pathway feeds it.
 
+You do not have to pass `--thresholds` yourself. `interpret_csv` calls
+`interpret_ecg.default_thresholds(pathway)`, which reads whatever the notebook produced
+from `configs/thresholds/` (`thresholds_1lead_II.json` for `rhythm`/`1lead`,
+`thresholds_12lead.json` for `morphology`/`12lead`; override the directory with
+`$ECGFOUNDER_THRESHOLDS_DIR`) whenever neither `--thresholds` nor `--threshold` was given
+explicitly. Every result now carries `threshold_source`: `"per-class"` or `"flat=<n>"` for
+an explicit choice, `"default:<file>"` when one of those files supplied it, and `"none"`
+when no threshold applied at all -- so a consumer can always tell whether `flagged` reflects
+a real binarization or is simply absent. See `configs/thresholds/README.md` for which file
+is which and why the 1-lead one is II rather than I.
+
 ## Image preprocessing
 
 Images are upscaled before digitization, by default. This is not cosmetic: the digitizer
@@ -280,13 +291,24 @@ Three conversions it performs, each one a way to put a plausible lie on a screen
   a right-sided print's V4R/V5R/V6R land in the V4/V5/V6 slots; on that layout they are
   relabelled rather than shown as left-sided leads.
 
+Each observation also carries `aboveThreshold`. When a per-class threshold applied to the
+result -- explicit or the default one described above under "Scores are rankings, not
+calibrated probabilities" -- classes that cleared it come first as `true`, followed by the
+rest of the ranking as `false`, so the app can show only the flagged findings or the whole
+thing without a second request. With no threshold applied at all it is `null` on every row:
+"no verdict computed", not "checked and absent". This is an additional field on the
+existing observation shape, not a new one; app-EKG's `observationFrom` parser picks named
+fields off the response rather than rejecting unknown ones, so it reads the rest unaffected.
+
 Two things it deliberately does not do:
 
 - **`measurements` is always `null`.** Rate, PR, QRS, QT, QTc and axis need wave
   delineation, which this pipeline does not do, and `EcgMeasurements` has no partial form.
   Filling PR and QT with anything would be inventing measurements of a patient.
 - **Labels pass through as the model produced them** (`SINUS RHYTHM`, not a phrase for a
-  patient to read). Rewriting them is a clinical and product decision.
+  patient to read). Rewriting them is a clinical and product decision. `docs/etiquetas_es_borrador.csv`
+  and `docs/etiquetas_es_borrador.md` are a first Spanish-language draft of that decision, for
+  a cardiologist to correct line by line; nothing in the pipeline reads them yet.
 
 A `degraded` result is emitted as `status: "failed"`, not as observations. The contract has
 `ready` and `failed` and nothing in between, so a reading that must not be trusted goes

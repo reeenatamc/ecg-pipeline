@@ -115,19 +115,35 @@ def to_observations(result: dict[str, Any]) -> list[dict[str, Any]]:
     cardiologist -- not something to improvise in a serialiser.
 
     The whole ranking is emitted, not a top slice: the contract is explicit that this is a
-    ranking rather than a verdict, and where to cut it is the interface's call.
+    ranking rather than a verdict, and where to cut it is the interface's call. When
+    ``interpret_csv`` applied per-class thresholds (``result["flagged"]`` present), the
+    classes that cleared theirs come first with ``aboveThreshold: true``, followed by the
+    rest of the top-k with ``aboveThreshold: false`` -- so the app can choose to show only
+    the flagged findings or the full ranking without a second request. When no thresholds
+    applied, every row is the same top-k as always with ``aboveThreshold: null``: that is
+    "no verdict was computed", not "found absent".
     """
     leads = observed_leads(result)
-    return [
-        {
+
+    def observation(row: dict[str, Any], above_threshold: bool | None) -> dict[str, Any]:
+        return {
             "id": observation_id(row["label"]),
             "label": row["label"],
             "leads": leads,
             "confidence": row["prob"],
             "needsReview": True,
+            "aboveThreshold": above_threshold,
         }
-        for row in result.get("topk", [])
-    ]
+
+    if "flagged" in result:
+        flagged_labels = {row["label"] for row in result["flagged"]}
+        observations = [observation(row, True) for row in result["flagged"]]
+        observations += [
+            observation(row, False) for row in result.get("topk", []) if row["label"] not in flagged_labels
+        ]
+        return observations
+
+    return [observation(row, None) for row in result.get("topk", [])]
 
 
 def trace_incomplete(quality: dict[str, Any] | None) -> bool:
