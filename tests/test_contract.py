@@ -356,6 +356,33 @@ class TestFailureReason(unittest.TestCase):
 
         self.assertEqual(failure_reason(result), "trace-incomplete")
 
+    def test_a_scan_that_yielded_no_signal_is_not_a_server_error(self):
+        # Measured on a blank image pushed through the whole pipeline. The digitizer
+        # wrote a CSV, interpretation raised "No usable lead found in canonical CSV",
+        # and the error branch blamed the service. Nothing was broken here: the image
+        # had nothing on it, and the record says so -- every lead at zero coverage --
+        # before any exception is considered.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "error": "ValueError: No usable lead found in canonical CSV.",
+            "signal_quality": {"leads_with_signal": [], "full_length_leads": [], "needs_full_length": True},
+        }
+
+        self.assertEqual(failure_reason(result), "trace-incomplete")
+
+    def test_a_crash_with_signal_present_is_still_a_server_error(self):
+        # The other half. Blaming the image for every failure would be the same mistake
+        # in the other direction, and it is this service that the user cannot fix.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "error": "RuntimeError: boom",
+            "signal_quality": {"leads_with_signal": ["II", "V5"]},
+        }
+
+        self.assertEqual(failure_reason(result), "server-error")
+
     def test_a_pathway_that_degrades_itself_is_not_trace_incomplete(self):
         # morphology and 12lead set degraded on their own quality dict for reasons that say
         # nothing about the trace; that must not be reported as a bad photograph.
@@ -375,6 +402,13 @@ class TestFailureReason(unittest.TestCase):
 
 
 class TestFailureReasonFromGates(unittest.TestCase):
+    def test_no_signal_outranks_the_interpretation_error_it_causes(self):
+        # A blank photograph recovers nothing, so interpretation fails too; the cause the
+        # user needs is the photograph, not the server.
+        result = {"degraded": True, "source_csv": "x.csv", "gates": ["no-signal", "interpretation-error"]}
+
+        self.assertEqual(failure_reason(result), "trace-incomplete")
+
     """``result["gates"]`` (pipeline.py's stable gate ids) is now the preferred source for
     ``failure_reason``; the field-based logic above stays only as a fallback for a result
     that predates it. Each of these results carries deliberately misleading fields -- no
@@ -405,6 +439,31 @@ class TestFailureReasonFromGates(unittest.TestCase):
 
     def test_no_full_length_lead_is_trace_incomplete(self):
         self.assertEqual(failure_reason(self.base("no-full-length-lead")), "trace-incomplete")
+
+    def test_a_blank_scan_whose_interpretation_raised_is_trace_incomplete(self):
+        # The field-based fix for a blank photograph, carried over to the gates. On an empty
+        # trace interpretation always raises, so both ids fire; "interpretation-error" is
+        # listed first and would otherwise blame the server for a picture with nothing on it.
+        both = {"degraded": True, "source_csv": "x.csv", "gates": ["no-signal", "interpretation-error"]}
+        only_the_error = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "gates": ["interpretation-error"],
+            "signal_quality": {"leads_with_signal": []},
+        }
+
+        self.assertEqual(failure_reason(both), "trace-incomplete")
+        self.assertEqual(failure_reason(only_the_error), "trace-incomplete")
+
+    def test_an_interpretation_error_with_signal_present_is_still_server_error(self):
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "gates": ["interpretation-error"],
+            "signal_quality": {"leads_with_signal": ["II", "V5"]},
+        }
+
+        self.assertEqual(failure_reason(result), "server-error")
 
     def test_an_empty_gates_list_falls_through_to_unexpected(self):
         # degraded for a reason none of the gate ids cover -- gates is present (so the

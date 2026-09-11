@@ -1,0 +1,51 @@
+--- a/src/digitize.py
++++ b/src/digitize.py
+@@ -1,4 +1,5 @@
+ import argparse
++import hashlib
+ import os
+ import random
+ import warnings
+@@ -142,8 +143,42 @@
+     save_matching_cost(got_values, output_basepath)
+ 
+ 
++def seed_from_image(image: torch.Tensor) -> None:
++    """Seed the RNGs from the image, so digitizing it is reproducible.
++
++    Inference draws at random in four places -- the two subsamples in
++    PerspectiveDetector, the control-point subsample in Dewarper, and the
++    tie-break jitter in SignalExtractor. None of them is seeded, so the same
++    image does not digitize to the same result twice.
++
++    Measured on one 1800x1076 photograph of a printout, eight identical runs:
++    six came back lead_layout precordial_6x1 and two standard_3x4_with_r3.
++    The layout decides which trace is named which lead, so those are two
++    different readings of one image, and matching_cost does not separate them
++    (0.441-0.459 for the first, 0.455 for the second).
++
++    FROM THE IMAGE, NOT ONCE PER PROCESS. Seeding at startup would leave each
++    image depending on how many draws the images before it consumed, so the
++    same file would digitize differently depending on what else sat in the
++    input directory and in what order. Keying on the pixels makes the result a
++    function of the image alone.
++
++    This makes the result repeatable, not correct: it fixes which draw you get,
++    and the underlying variance is still there. The variance grows with image
++    size, because the subsample caps are constants while the pixel count is not.
++
++    Args:
++        image: The decoded image, as returned by decode_and_prepare_image.
++    """
++    digest = hashlib.blake2b(image.contiguous().numpy().tobytes(), digest_size=8).digest()
++    seed = int.from_bytes(digest, "big") % (2**31 - 1)
++    random.seed(seed)
++    np.random.seed(seed)
++    torch.manual_seed(seed)
++
+ def process_one_file(file_path: str, config: CN, inference_wrapper: Any, save_mode: str) -> None:
+     image = decode_and_prepare_image(file_path)
++    seed_from_image(image)
+     layout_should_include_substring: str | None = None
+     if config.DATA.get("layout_should_include_substring") is not None:
+         if "limb" in str(file_path):
