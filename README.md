@@ -116,7 +116,11 @@ or to a global fiducial from the 12-lead vector magnitude, is the known next imp
 present/absent decisions, `ABNORMAL ECG` can score high alongside `NORMAL ECG`.
 ECGFounder binarizes with per-class thresholds derived on PTB-XL. Pass `--thresholds`
 (a `{label: threshold}` JSON) or `--threshold` to get a flagged list; without one you get
-a ranking only.
+a ranking only. Upstream does not publish the thresholds, it computes them at evaluation
+time; `scripts/derive_thresholds_colab.ipynb` reproduces that computation on a Colab GPU
+(about half an hour) and also measures two things this README leaves open: whether the
+bandpass upstream uses in fine-tuning helps the pretrained model, and how much the 1-lead
+checkpoint, built for lead I, loses on the II/V1/V5 strips the `rhythm` pathway feeds it.
 
 ## Image preprocessing
 

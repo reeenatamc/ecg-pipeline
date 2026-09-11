@@ -257,11 +257,15 @@ Se pasan con `--thresholds umbrales.json` (un `{etiqueta: umbral}`) o un `--thre
 
 ## 5. Tres cosas abiertas que deberías saber
 
-**1. El preprocesado de ECGFounder es solo el z-score, y eso es correcto.** Una versión
-anterior del `NOTICE` afirmaba que upstream exige «filtrado y normalización z-score». Se
-verificó contra el `dataset.py` de ECGFounder: hace `nan_to_num` y un z-score global, y
-ningún filtro (ni pasabanda, ni notch, ni línea base, ni remuestreo). `waveform.zscore`
-es exactamente esa normalización. El `NOTICE` ya lo dice así. No hay nada que implementar.
+**1. El filtro de ECGFounder: upstream tiene dos caminos y aquí se sigue el de
+evaluación.** Su README dice «seguir estrictamente `dataset.py`, incluido el filtrado».
+Leído con cuidado: `ptbxl_eval.py`, que es la validación de 150 clases con el checkpoint
+preentrenado (nuestro uso), aplica solo un z-score global y ningún filtro. `dataset.py`,
+que son los datasets de fine-tuning, aplica antes `filter_bandpass`: notch de 50 Hz (Q=30)
+y Butterworth de orden 4 pasabanda 0,67 a 40 Hz. `waveform.zscore` sigue el camino de
+evaluación. Si el pasabanda ayuda o estorba sobre un ECG digitalizado de papel no se ha
+medido; `scripts/derive_thresholds_colab.ipynb` corre las dos variantes sobre PTB-XL y
+deja la comparación en una tabla.
 
 **2. No hay datos de validación.** Nada de esto está validado contra ECG con verdad de
 referencia. Los números de arriba son de ejemplos sueltos. Es el bloqueo real del proyecto,
