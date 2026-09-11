@@ -10,6 +10,10 @@ out/
 *_timeseries_canonical.csv
 *_interpretation.json
 
+# ...except the integration check's stored reference: a fixture, not a run's output. See
+# tests/integration/README.md.
+!tests/integration/expected/*_timeseries_canonical.csv
+
 # Patient data must never be committed
 data/
 *.dcm

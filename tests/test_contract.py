@@ -7,15 +7,22 @@ under a left-sided name.
 
 from __future__ import annotations
 
+import csv
+import os
+import tempfile
 import unittest
 
 import numpy as np
 
 from ecg_pipeline.contract import (
+    MAX_BRIDGED_GAP_SECONDS,
+    bridged_holes,
     failure_reason,
     lead_segments,
     observation_id,
     observed_leads,
+    signal_bridging_report,
+    signal_from_csv,
     to_analysis,
     to_observations,
     to_signal,
@@ -60,6 +67,99 @@ class TestLeadSegments(unittest.TestCase):
 
         for segment in lead_segments(values, fs=1):
             self.assertFalse(any(v != v for v in segment["values"]))
+
+
+class TestBridgedDropouts(unittest.TestCase):
+    """Bridging a digitizer dropout must never touch a real gap.
+
+    Measured on a real record (study 43be167a): V1-V4 arrive split by 14-34 ms holes where
+    the digitizer lost the trace under a label or a bold grid line, while the real gaps on
+    that record are hundreds of milliseconds or more. 0.04 s sits between the two.
+    """
+
+    def test_a_three_sample_hole_is_bridged_with_linear_interpolation(self):
+        # 3 samples at 500 Hz = 6 ms, well under the 40 ms threshold.
+        values = np.array([1000.0, 2000.0, np.nan, np.nan, np.nan, 6000.0, 7000.0])
+
+        segments = lead_segments(values, FS)
+
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0]["values"], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+
+    def test_a_fifty_millisecond_hole_is_not_bridged_and_still_splits(self):
+        # 25 samples at 500 Hz = 50 ms, over the threshold: "gaps stay gaps" still applies.
+        values = np.concatenate([[1.0, 2.0], np.full(25, np.nan), [3.0, 4.0]])
+
+        segments = lead_segments(values, FS)
+
+        self.assertEqual(len(segments), 2)
+
+    def test_bridged_holes_reports_only_what_was_bridged(self):
+        values = np.concatenate([[1.0, 2.0], np.full(3, np.nan), [3.0], np.full(25, np.nan), [4.0]])
+
+        self.assertEqual(bridged_holes(values, FS), [6.0])
+
+    def test_a_hole_touching_the_edge_is_never_bridged(self):
+        # Nothing on one side to interpolate from -- the lead has not started yet, this is
+        # not a dropout inside a printed stretch.
+        values = np.concatenate([np.full(3, np.nan), [1.0, 2.0]])
+
+        self.assertEqual(bridged_holes(values, FS), [])
+        self.assertEqual(len(lead_segments(values, FS)), 1)
+
+    def test_threshold_is_shorter_than_any_qrs_complex(self):
+        # QRS complexes run roughly 60-120 ms; the bridge must stay well under that so it
+        # can never span, and so hide, part of a beat.
+        self.assertLess(MAX_BRIDGED_GAP_SECONDS, 0.06)
+
+
+class TestSignalFromCsv(unittest.TestCase):
+    """The public entry point for the trace alone, without interpretation."""
+
+    def _write_canonical_csv(self, path):
+        with open(path, "w", newline="") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(CANONICAL_LEADS)
+            for _ in range(10):
+                writer.writerow([1000.0] * len(CANONICAL_LEADS))
+
+    def test_matches_what_to_analysis_builds_internally(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "ecg_timeseries_canonical.csv")
+            self._write_canonical_csv(path)
+
+            signal = signal_from_csv(path, fs=FS)
+
+            self.assertEqual(signal["samplingRateHz"], FS)
+            self.assertEqual(signal["durationSeconds"], round(10 / FS, 6))
+            self.assertEqual([lead["name"] for lead in signal["leads"]], CANONICAL_LEADS)
+            self.assertEqual(signal["leads"][0]["segments"][0]["values"][0], 1.0)
+
+    def test_relabels_right_sided_leads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "ecg_timeseries_canonical.csv")
+            self._write_canonical_csv(path)
+
+            signal = signal_from_csv(path, lead_layout="limb_aug_right_3x3", fs=FS)
+
+            self.assertIn("V4R", [lead["name"] for lead in signal["leads"]])
+
+
+class TestSignalBridgingReport(unittest.TestCase):
+    def test_reports_bridged_holes_per_lead(self):
+        canonical = np.full((len(CANONICAL_LEADS), 20), 1000.0)
+        index = CANONICAL_LEADS.index("II")
+        canonical[index, 5:8] = np.nan  # 3 samples, bridged
+
+        report = signal_bridging_report(canonical, list(CANONICAL_LEADS), FS)
+
+        self.assertEqual(list(report.keys()), ["II"])
+        self.assertEqual(report["II"], bridged_holes(canonical[index], FS))
+
+    def test_a_lead_with_no_bridged_holes_is_absent_from_the_report(self):
+        canonical = np.full((len(CANONICAL_LEADS), 20), 1000.0)
+
+        self.assertEqual(signal_bridging_report(canonical, list(CANONICAL_LEADS), FS), {})
 
 
 class TestToSignal(unittest.TestCase):
