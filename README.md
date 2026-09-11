@@ -182,6 +182,23 @@ Five independent gates, all needed. None catches the others' failures:
 All five run on `--digitize-only` too, so `--fail-on-degraded` is meaningful without
 paying for the interpretation stage.
 
+Every result also carries `gates`: the stable, machine-readable ids of whichever gates
+fired, alongside the prose in `warnings`. `contract.py` reads this list to pick a
+`failure_reason` instead of re-parsing warning text, and `_report_record` prints the ids
+next to `[DEGRADED]` on the CLI. Gate 3 only ever warns, never degrades, so it has no id.
+
+| Gate | id(s) |
+|---|---|
+| 1. Layout | `layout-unknown` |
+| 2. Coverage | `no-signal` (nothing recovered at all), `no-full-length-lead` (no lead reached `--coverage-min`) |
+| 4. Template completeness | `leads-missing-from-template` |
+| 5. Rhythm-strip identity | `rhythm-strip-unverified` |
+
+Two more ids are not gates on the signal itself but cover the batch-level failures the
+contract also has to classify: `digitizer-no-output` (the image the digitizer skipped, see
+[Batch runs](#batch-runs)) and `interpretation-error` (an exception raised inside the
+interpretation stage).
+
 Observed on the sample ECGs:
 
 | Input | Layout | Leads | Verdict |

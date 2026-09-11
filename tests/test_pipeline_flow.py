@@ -171,6 +171,7 @@ class TestLayoutTemplateGates(PipelineRunCase):
 
         self.assertTrue(results[0]["degraded"])
         self.assertTrue(any("defines 6 lead" in w and "missing aVF" in w for w in results[0]["warnings"]))
+        self.assertEqual(results[0]["gates"], ["leads-missing-from-template"])
 
     def test_the_full_template_does_not_degrade(self):
         # standard_3x1 defines only 3 leads and all 3 came back with signal; the pipeline
@@ -215,6 +216,7 @@ class TestLayoutTemplateGates(PipelineRunCase):
 
         self.assertTrue(results[0]["degraded"])
         self.assertTrue(any("unverified" in w and "aVF" in w for w in results[0]["warnings"]))
+        self.assertEqual(results[0]["gates"], ["rhythm-strip-unverified"])
 
     def test_a_conventional_rhythm_strip_does_not_degrade(self):
         self.add_image("afib_E000742")
@@ -234,6 +236,126 @@ class TestLayoutTemplateGates(PipelineRunCase):
 
         self.assertFalse(results[0]["degraded"])
         self.assertEqual(results[0]["warnings"], [])
+
+
+class TestGateIds(PipelineRunCase):
+    """``result["gates"]``: the stable ids ``contract.failure_reason`` reads instead of
+    parsing warning text. Covers the digitize-only branch; the interpretation branch's own
+    wiring (it assembles the same list from ``result["signal_quality"]["gates"]`` plus
+    ``"error" in result``) is covered in ``TestInterpretationBranchGateIds`` below.
+    """
+
+    def test_layout_unknown_reports_its_gate_id(self):
+        self.add_image("ecg")
+
+        results = self.run_pipeline({"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "Unknown layout"})
+
+        self.assertEqual(results[0]["gates"], ["layout-unknown"])
+
+    def test_no_signal_reports_its_gate_id(self):
+        # With truly nothing recovered, gate 4 also fires (the template's own leads are all
+        # missing too) -- both ids are reported, in the order their gates run.
+        self.add_image("ecg")
+
+        results = self.run_pipeline({"ecg": {}}, {"ecg": "standard_3x1"})
+
+        self.assertEqual(results[0]["gates"], ["no-signal", "leads-missing-from-template"])
+
+    def test_no_full_length_lead_reports_its_gate_id(self):
+        self.add_image("ecg")
+
+        results = self.run_pipeline({"ecg": {lead: 0.25 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"})
+
+        self.assertEqual(results[0]["gates"], ["no-full-length-lead"])
+
+    def test_a_clean_record_reports_no_gates(self):
+        self.add_image("ecg")
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
+
+        results = self.run_pipeline({"ecg": coverage}, {"ecg": "standard_3x4_with_r3"})
+
+        self.assertEqual(results[0]["gates"], [])
+
+    def test_layout_unknown_and_no_signal_can_both_fire(self):
+        # An unmatched layout also has no leads_with_signal on this fixture: both gates
+        # apply and both ids are reported, layout-unknown first.
+        self.add_image("ecg")
+
+        results = self.run_pipeline({"ecg": {}}, {"ecg": "Unknown layout"})
+
+        self.assertEqual(results[0]["gates"], ["layout-unknown", "no-signal"])
+
+
+class TestInterpretationBranchGateIds(PipelineRunCase):
+    """Same ``gates`` field, assembled in ``pipeline.run``'s interpretation branch instead
+    of the digitize-only one. ``interpret_ecg.interpret_csv`` is mocked, as in
+    ``TestModelIsLoadedOnce``, so these test the wiring rather than a real interpretation.
+    """
+
+    def run_with_fake_interpret(self, produces, layouts, fake_interpret):
+        self.add_image(next(iter(produces)))
+
+        def fake_digitize(*_args, **_kwargs):
+            paths = []
+            for name, coverage in produces.items():
+                path = self.output / f"{name}{CANONICAL_SUFFIX}"
+                write_canonical_csv(path, coverage)
+                paths.append(path)
+            write_metadata(self.output, layouts)
+            return sorted(paths)
+
+        import ecg_pipeline.interpret.interpret_ecg as interpret
+
+        with (
+            mock.patch.object(pipeline.digitizer, "digitize", side_effect=fake_digitize),
+            mock.patch.object(interpret, "build_model_for", return_value=(object(), "ckpt.pth")),
+            mock.patch.object(interpret, "interpret_csv", side_effect=fake_interpret),
+        ):
+            return pipeline.run(image_dir=self.images, output_dir=self.output, quiet=True)
+
+    def test_a_gate_2_id_from_signal_quality_passes_through(self):
+        def fake_interpret(csv_path, **_kwargs):
+            return {
+                "source_csv": csv_path,
+                "topk": [],
+                "summary": {},
+                "degraded": True,
+                "warnings": [],
+                "signal_quality": {"gates": ["no-full-length-lead"]},
+            }
+
+        results = self.run_with_fake_interpret(
+            {"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"}, fake_interpret
+        )
+
+        self.assertEqual(results[0]["gates"], ["no-full-length-lead"])
+
+    def test_an_interpretation_exception_reports_its_gate_id(self):
+        def fake_interpret(csv_path, **_kwargs):
+            raise RuntimeError("boom")
+
+        results = self.run_with_fake_interpret(
+            {"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"}, fake_interpret
+        )
+
+        self.assertEqual(results[0]["gates"], ["interpretation-error"])
+
+    def test_a_clean_interpretation_reports_no_gates(self):
+        def fake_interpret(csv_path, **_kwargs):
+            return {
+                "source_csv": csv_path,
+                "topk": [],
+                "summary": {},
+                "degraded": False,
+                "warnings": [],
+                "signal_quality": {"gates": []},
+            }
+
+        results = self.run_with_fake_interpret(
+            {"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"}, fake_interpret
+        )
+
+        self.assertEqual(results[0]["gates"], [])
 
 
 class TestMissingRecords(PipelineRunCase):

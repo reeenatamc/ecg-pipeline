@@ -37,6 +37,18 @@ OWN_LAYOUTS_PATH = Path(__file__).resolve().parent.parent / "configs" / "lead_la
 # recovered by rhythm-strip cosine matching and its lead identities are guesses.
 UNKNOWN_LAYOUT = "Unknown layout"
 
+# Stable, machine-readable ids for the gates that can degrade a record, reported in
+# ``result["gates"]`` alongside the human-readable ``warnings``. ``contract.failure_reason``
+# maps these onto app-EKG's closed set of causes instead of re-parsing warning text. Gate 2's
+# two ids (no signal at all / no full-length lead) live in waveform.py next to the logic
+# that decides them; gate 3 (lead completeness against the full twelve) only ever warns and
+# never degrades, so it has no id here.
+GATE_LAYOUT_UNKNOWN = "layout-unknown"
+GATE_LEADS_MISSING_FROM_TEMPLATE = "leads-missing-from-template"
+GATE_RHYTHM_STRIP_UNVERIFIED = "rhythm-strip-unverified"
+GATE_DIGITIZER_NO_OUTPUT = "digitizer-no-output"
+GATE_INTERPRETATION_ERROR = "interpretation-error"
+
 
 def read_digitization_metadata(output_dir: str | Path) -> dict[str, dict[str, Any]]:
     """Parse the digitizer's per-image quality metadata, keyed by record.
@@ -211,7 +223,9 @@ def _layout_has_wildcard_rhythm(layout_name: str) -> bool:
     return "Any" in (definitions[layout_name].get("rhythm_leads") or [])
 
 
-def _layout_template_warnings(meta: dict[str, Any] | None, quality: dict[str, Any]) -> tuple[list[str], bool]:
+def _layout_template_warnings(
+    meta: dict[str, Any] | None, quality: dict[str, Any]
+) -> tuple[list[str], bool, list[str]]:
     """Gates 4 and 5: a layout matched confidently but wrong for the image.
 
     Gate 3 (in ``assess_quality``) only compares what came back against the full twelve, so
@@ -225,18 +239,22 @@ def _layout_template_warnings(meta: dict[str, Any] | None, quality: dict[str, An
 
     Needs both the layout name (``meta``) and the signal itself (``quality``), which is why
     it lives here rather than in ``assess_quality``, which never sees ``meta``.
+
+    Returns ``(warnings, degraded, gates)``, ``gates`` being the stable ids of whichever of
+    the two fired -- what ``contract.failure_reason`` reads instead of parsing warning text.
     """
     warnings: list[str] = []
+    gates: list[str] = []
     degraded = False
 
     layout = meta.get("lead_layout", "") if meta else ""
     if not layout or layout == UNKNOWN_LAYOUT:
-        return warnings, degraded  # already flagged by gate 1; nothing to check it against
+        return warnings, degraded, gates  # already flagged by gate 1; nothing to check it against
 
     if "leads_with_signal" not in quality:
         # e.g. the canonical CSV itself failed to parse -- assess_quality never produced a
         # real result, and that failure is already reported elsewhere.
-        return warnings, degraded
+        return warnings, degraded, gates
 
     expected = _layout_leads(layout)
     if expected is None:
@@ -249,6 +267,7 @@ def _layout_template_warnings(meta: dict[str, Any] | None, quality: dict[str, An
         missing = sorted(expected - have)
         if missing:
             degraded = True
+            gates.append(GATE_LEADS_MISSING_FROM_TEMPLATE)
             warnings.append(
                 f"Layout {layout!r} defines {len(expected)} lead(s) but only "
                 f"{len(expected & have)} of them carry signal; missing {', '.join(missing)}. "
@@ -259,6 +278,7 @@ def _layout_template_warnings(meta: dict[str, Any] | None, quality: dict[str, An
         unconventional = sorted(set(quality.get("full_length_leads", [])) - set(PREFERRED_RHYTHM_LEADS))
         if unconventional:
             degraded = True
+            gates.append(GATE_RHYTHM_STRIP_UNVERIFIED)
             warnings.append(
                 f"Layout {layout!r} attributes its rhythm strip by similarity, not by the "
                 f"print's own label. The full-length lead(s) {', '.join(unconventional)} "
@@ -266,7 +286,7 @@ def _layout_template_warnings(meta: dict[str, Any] | None, quality: dict[str, An
                 f"per AHA/ACCF/HRS 2007), so the strip's identity is unverified."
             )
 
-    return warnings, degraded
+    return warnings, degraded, gates
 
 
 def _record_warnings(
@@ -279,6 +299,8 @@ def _record_warnings(
 def _report_record(name: str, result: dict[str, Any], pathway: str | None) -> None:
     """One line per record, then its warnings. ``pathway`` is None for digitize-only runs."""
     flag = "  [DEGRADED]" if result.get("degraded") else ""
+    if result.get("gates"):
+        flag += f" ({', '.join(result['gates'])})"
     if "error" in result:
         print(f"  {name}: {result['error']}")
     elif "topk" in result:
@@ -306,6 +328,7 @@ def missing_record_results(prepared: dict[str, dict[str, Any]], recovered: set[s
             "preprocessing": record,
             "error": "The digitizer produced no output for this image; it was skipped.",
             "degraded": True,
+            "gates": [GATE_DIGITIZER_NO_OUTPUT],
             "warnings": preprocess.preprocessing_warnings(record)
             + [
                 "Digitization failed for this image. The digitizer reports per-image failures "
@@ -389,11 +412,17 @@ def run(
                 "preprocessing": prep,
                 "signal_quality": quality,
             }
-            template_warnings, template_degraded = _layout_template_warnings(meta, quality)
+            template_warnings, template_degraded, template_gates = _layout_template_warnings(meta, quality)
             result["warnings"] = (
                 _record_warnings(meta, prep, max_matching_cost) + list(quality["warnings"]) + template_warnings
             )
             result["degraded"] = bool(quality["degraded"]) or _layout_failed(meta) or template_degraded
+            gates: list[str] = []
+            if _layout_failed(meta):
+                gates.append(GATE_LAYOUT_UNKNOWN)
+            gates += quality.get("gates", [])
+            gates += template_gates
+            result["gates"] = gates
             results.append(result)
             if not quiet:
                 _report_record(name, result, pathway=None)
@@ -436,7 +465,9 @@ def run(
             result = {"source_csv": str(csv_path), "error": f"{type(exc).__name__}: {exc}"}
 
         # Digitization problems come first: they invalidate everything downstream.
-        template_warnings, template_degraded = _layout_template_warnings(meta, result.get("signal_quality", {}))
+        template_warnings, template_degraded, template_gates = _layout_template_warnings(
+            meta, result.get("signal_quality", {})
+        )
         result["record"] = name
         result["digitization"] = meta
         result["preprocessing"] = prep
@@ -444,6 +475,14 @@ def run(
         result["degraded"] = (
             bool(result.get("degraded")) or _layout_failed(meta) or template_degraded or "error" in result
         )
+        gates: list[str] = []
+        if _layout_failed(meta):
+            gates.append(GATE_LAYOUT_UNKNOWN)
+        gates += result.get("signal_quality", {}).get("gates", [])
+        gates += template_gates
+        if "error" in result:
+            gates.append(GATE_INTERPRETATION_ERROR)
+        result["gates"] = gates
 
         out_path = Path(record + INTERPRETATION_SUFFIX)
         out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))

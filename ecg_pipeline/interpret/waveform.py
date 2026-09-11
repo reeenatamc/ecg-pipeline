@@ -34,6 +34,13 @@ STANDARD_3X4_COLUMNS = [
 # The digitizer resamples every record to 5000 samples over the standard 10 s of paper.
 CANONICAL_FS = 500
 
+# Stable, machine-readable ids for the two conditions under which this function degrades a
+# record (gate 2). Exposed in its ``gates`` list rather than left to be inferred from
+# warning text -- ``contract.failure_reason`` reads these directly. Gate 3 (lead
+# completeness against the full twelve) only ever warns, never degrades, so it has no id.
+GATE_NO_SIGNAL = "no-signal"
+GATE_NO_FULL_LENGTH_LEAD = "no-full-length-lead"
+
 
 def interpolate_internal_nans(segment: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Linearly interpolate NaNs that sit between valid samples."""
@@ -140,6 +147,7 @@ def assess_quality(
     with_signal = {l: v for l, v in info.items() if v["coverage"] > 0}
 
     warnings: list[str] = []
+    gates: list[str] = []
     degraded = False
     if ordered:
         selected = ordered
@@ -147,6 +155,7 @@ def assess_quality(
         selected = [max(with_signal, key=lambda l: with_signal[l]["coverage"])]
         if needs_full_length:
             degraded = True
+            gates.append(GATE_NO_FULL_LENGTH_LEAD)
             pct = 100 * info[selected[0]]["coverage"]
             warnings.append(
                 f"No lead reached {100 * coverage_min:.0f}% coverage, so no lead was printed at "
@@ -156,6 +165,7 @@ def assess_quality(
     else:
         selected = []
         degraded = True
+        gates.append(GATE_NO_SIGNAL)
         warnings.append("No leads were recovered from the digitized signal.")
 
     usable = list(with_signal)
@@ -183,6 +193,7 @@ def assess_quality(
         "needs_full_length": needs_full_length,
         "degraded": degraded,
         "warnings": warnings,
+        "gates": gates,
     }
 
 
