@@ -146,20 +146,53 @@ def trace_incomplete(quality: dict[str, Any] | None) -> bool:
     return bool(quality.get("needs_full_length")) and not quality.get("full_length_leads")
 
 
+# ``result["gates"]`` (pipeline.py) to the contract's closed set of causes, first match
+# wins. Both "unsupported-mount" entries read as the same underlying problem: the layout
+# the digitizer chose does not actually describe what is on the print -- either it names
+# leads the signal does not have, or it cannot even say which lead its own rhythm strip is.
+_GATE_REASONS = [
+    ("digitizer-no-output", "unreadable-image"),
+    ("interpretation-error", "server-error"),
+    ("layout-unknown", "unsupported-mount"),
+    ("leads-missing-from-template", "unsupported-mount"),
+    ("rhythm-strip-unverified", "unsupported-mount"),
+    ("no-signal", "trace-incomplete"),
+    ("no-full-length-lead", "trace-incomplete"),
+]
+
+
 def failure_reason(result: dict[str, Any]) -> str | None:
     """Map a pipeline failure onto the contract's closed set of causes.
 
-    ``grid-not-detected`` is never produced: when the digitizer cannot find the grid it
-    raises per-image and writes nothing at all, which reaches us as an image that produced
-    no output and is indistinguishable from any other unreadable one.
+    Reads ``result["gates"]`` when present -- the stable ids pipeline.py's gates attach to
+    a degraded record -- rather than re-deriving the cause from ``warnings`` text or from
+    fields that were never meant to double as a classification. ``_GATE_REASONS`` is
+    checked in order and the first id present in ``result["gates"]`` wins; a record can
+    trip more than one gate (an unknown layout also fails lead completeness), and the
+    earlier entries are the more specific/severe causes.
+
+    For a result written before ``gates`` existed (older JSON on disk, or a caller that
+    built a result dict by hand), the same set of fields this function has always read are
+    used instead. ``grid-not-detected`` is never produced either way: when the digitizer
+    cannot find the grid it raises per-image and writes nothing at all, which reaches us as
+    an image that produced no output and is indistinguishable from any other unreadable one.
 
     ``trace-incomplete`` is the case the contract lacked for a long time: the image was
-    read and a layout was found, but the trace came back too fragmented to interpret. It
-    used to land on ``unexpected``, which told the user something had gone wrong on the
-    server when what had gone wrong was the photograph.
+    read and a layout was found, but the trace came back too fragmented to interpret (gate
+    2's two conditions -- no signal at all, or no full-length lead where the pathway needs
+    one). It used to land on ``unexpected``, which told the user something had gone wrong
+    on the server when what had gone wrong was the photograph.
     """
     if not result.get("degraded"):
         return None
+
+    if "gates" in result:
+        fired = set(result["gates"])
+        for gate_id, reason in _GATE_REASONS:
+            if gate_id in fired:
+                return reason
+        return "unexpected"
+
     if not result.get("source_csv"):
         return "unreadable-image"
     if "error" in result:
