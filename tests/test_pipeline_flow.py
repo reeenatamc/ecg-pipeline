@@ -121,7 +121,9 @@ class TestDigitizeOnlyGates(PipelineRunCase):
         results = self.run_pipeline({"ecg": coverage}, {"ecg": "standard_3x4_with_r3"})
 
         self.assertFalse(results[0]["degraded"])
-        self.assertEqual(results[0]["warnings"], [])
+        # Not degraded, but not silent either: V1 also reached full length and is left out
+        # of the rhythm ensemble now that II and V5 (both preferred) are present.
+        self.assertTrue(any("V1" in w and "left out" in w for w in results[0]["warnings"]))
 
     def test_no_full_length_lead_is_flagged_without_interpretation(self):
         self.add_image("ecg")
@@ -194,7 +196,9 @@ class TestLayoutTemplateGates(PipelineRunCase):
         results = self.run_pipeline({"normal": coverage}, {"normal": "standard_3x4_with_r3"})
 
         self.assertFalse(results[0]["degraded"])
-        self.assertEqual(results[0]["warnings"], [])
+        # "Clean" means not degraded, not silent: V1 is reported as left out of the rhythm
+        # ensemble (II and V5, both preferred, are present too).
+        self.assertTrue(any("V1" in w and "left out" in w for w in results[0]["warnings"]))
 
     def test_an_unavailable_layout_definition_warns_without_degrading(self):
         self.add_image("ecg")
@@ -229,13 +233,16 @@ class TestLayoutTemplateGates(PipelineRunCase):
 
     def test_a_12x1_layout_never_triggers_the_rhythm_strip_check(self):
         # Every lead is full length and there is no wildcard rhythm lead at all, so gate 5
-        # must not fire just because most of them are not II/V1/V5.
+        # must not fire just because most of them are not II/V1/V5. The rhythm ensemble
+        # selection still only averages the preferred leads (II, V5); the other ten being
+        # left out is a separate, non-degrading warning, not gate 5's "unverified" one.
         self.add_image("ecg")
 
         results = self.run_pipeline({"ecg": {l: 1.0 for l in CANONICAL_LEADS}}, {"ecg": "standard_12x1"})
 
         self.assertFalse(results[0]["degraded"])
-        self.assertEqual(results[0]["warnings"], [])
+        self.assertFalse(any("unverified" in w for w in results[0]["warnings"]))
+        self.assertTrue(any("left out" in w for w in results[0]["warnings"]))
 
 
 class TestGateIds(PipelineRunCase):

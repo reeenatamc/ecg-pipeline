@@ -8,8 +8,10 @@ canonical time-series output and runs it through the pretrained ECGFounder model
 A standard 3x4 paper ECG only prints ~2.5 s of most leads plus a few full-length
 rhythm strips, so no pathway invents signal:
 
-* ``rhythm`` (default) - run the 1-lead checkpoint on every full-length rhythm
-      strip (II / V1 / V5) and average the opinions. Trustworthy for rhythm/rate.
+* ``rhythm`` (default) - run the 1-lead checkpoint on the preferred full-length rhythm
+      strip(s) (II / V5) and average the opinions; falls back to whichever other
+      conventional strip (II / V1 / V5) or lead is full length only when neither preferred
+      one was printed. Trustworthy for rhythm/rate.
 * ``1lead``  - the 1-lead checkpoint on a single chosen lead (inspection).
 * ``morphology`` - a representative (median) beat per lead, phase-aligned across all
       twelve, tiled to 10 s -> 12-lead checkpoint. This is the pathway to use for
@@ -303,6 +305,28 @@ def flagged_findings(
     return out
 
 
+def thresholded_labels(
+    tasks: list[str],
+    thresholds: dict[str, float] | None = None,
+    default: float | None = None,
+) -> list[str]:
+    """Which labels actually had a threshold to clear, sorted -- distinct from which cleared it.
+
+    A flat ``default`` applies to every label, so it covers all of ``tasks``. A per-class
+    ``thresholds`` dict covers only the labels it has an entry for: with a partial threshold
+    set (this repo's provisional fold-10 derivation supplies 23 of 150 classes, see
+    configs/thresholds/README.md), most labels have no entry and therefore no threshold was
+    ever applied to them -- not "checked and absent", just never checked. ``to_observations``
+    reads this list to tell those two apart instead of defaulting every non-flagged row to
+    ``aboveThreshold: false``.
+    """
+    if default is not None:
+        return sorted(tasks)
+    if thresholds:
+        return sorted(t for t in tasks if t in thresholds)
+    return []
+
+
 def summary_probs(probs: npt.NDArray[np.float64], tasks: list[str]) -> dict[str, float]:
     idx = {t: i for i, t in enumerate(tasks)}
     return {lab: round(float(probs[idx[lab]]), 4) for lab in SUMMARY_LABELS if lab in idx}
@@ -320,7 +344,15 @@ def interpret_rhythm(
     method: str = "mean",
     device: str = "cpu",
 ) -> tuple[npt.NDArray[np.float64], dict[str, npt.NDArray[np.float64]], list[str]]:
-    """1-lead model over every full-length rhythm strip; opinions combined per class."""
+    """1-lead model over the selected full-length rhythm strip(s); opinions combined per class.
+
+    ``leads`` (via ``select_rhythm_leads``/``assess_quality``) is not necessarily every
+    full-length lead: when at least one of ``PREFERRED_RHYTHM_LEADS`` (II, V5) is full
+    length, only the preferred lead(s) are used, because averaging in a lead the checkpoint
+    reads poorly (V1, at chance on morphology classes per the fold-10 derivation -- see
+    configs/thresholds/README.md) would dilute every class in the combined result. Any other
+    full-length lead is used only when none of the preferred ones is present.
+    """
     if leads is None:
         leads = select_rhythm_leads(canonical, names, coverage_min)
     if not leads:
@@ -466,6 +498,7 @@ def interpret_csv(
 
     if thresholds is not None or flat_threshold is not None:
         result["flagged"] = flagged_findings(probs, tasks, thresholds, flat_threshold)
+        result["thresholded_labels"] = thresholded_labels(tasks, thresholds, flat_threshold)
         if default_source is not None:
             result["threshold_source"] = f"default:{default_source}"
         else:

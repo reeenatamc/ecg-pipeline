@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from ecg_pipeline.interpret import interpret_ecg
-from ecg_pipeline.interpret.interpret_ecg import default_thresholds, interpret_csv, load_tasks
+from ecg_pipeline.interpret.interpret_ecg import default_thresholds, interpret_csv, load_tasks, thresholded_labels
 from ecg_pipeline.interpret.waveform import CANONICAL_LEADS
 
 N = 1000
@@ -77,6 +77,18 @@ class TestDefaultThresholdsLoader(unittest.TestCase):
                 self.assertEqual(default_thresholds("morphology"), {"ABNORMAL ECG": 0.7})
                 self.assertEqual(default_thresholds("12lead"), {"ABNORMAL ECG": 0.7})
 
+    def test_ignores_subdirectories(self):
+        # configs/thresholds/provisional/ holds the fold-10 derivation deliberately not
+        # auto-loaded: default_thresholds only ever reads THRESHOLDS_DIR/thresholds_*.json
+        # directly, never a subdirectory, so shipping those files does not silently change
+        # what a caller who asked for nothing gets.
+        with tempfile.TemporaryDirectory() as tmp:
+            sub = Path(tmp) / "provisional" / "fold10_2026-09-11"
+            sub.mkdir(parents=True)
+            (sub / "thresholds_1lead_II.json").write_text(json.dumps({"SINUS RHYTHM": 0.5}))
+            with mock.patch.object(interpret_ecg, "THRESHOLDS_DIR", tmp):
+                self.assertIsNone(default_thresholds("rhythm"))
+
     def test_an_unknown_pathway_is_none_rather_than_a_lookup_error(self):
         self.assertIsNone(default_thresholds("not-a-pathway"))
 
@@ -92,6 +104,28 @@ class TestDefaultThresholdsLoader(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertIn("could not load thresholds", stderr.getvalue())
+
+
+class TestThresholdedLabels(unittest.TestCase):
+    """The helper ``to_observations`` reads to tell "no threshold to clear" apart from
+    "checked and absent" -- see contract.to_observations and configs/thresholds/README.md.
+    """
+
+    def test_a_flat_default_covers_every_task(self):
+        self.assertEqual(thresholded_labels(["B", "A"], default=0.5), ["A", "B"])
+
+    def test_a_per_class_dict_covers_only_its_own_entries(self):
+        # A partial set (this repo's provisional fold-10 derivation, 23 of 150 classes) must
+        # not silently expand to "every task" -- that is exactly the bug this exists to fix.
+        self.assertEqual(thresholded_labels(["A", "B", "C"], thresholds={"B": 0.3}), ["B"])
+
+    def test_neither_given_is_empty(self):
+        self.assertEqual(thresholded_labels(["A", "B"]), [])
+
+    def test_a_flat_default_wins_even_alongside_a_partial_dict(self):
+        # Mirrors flagged_findings' own fallback: a class missing from thresholds still
+        # gets `default`, so every task ends up with a threshold applied.
+        self.assertEqual(thresholded_labels(["A", "B"], thresholds={"A": 0.2}, default=0.5), ["A", "B"])
 
 
 class TestInterpretCsvDefaultThresholds(unittest.TestCase):
@@ -123,6 +157,23 @@ class TestInterpretCsvDefaultThresholds(unittest.TestCase):
 
         self.assertEqual(result["threshold_source"], "default:thresholds_1lead_II.json")
         self.assertEqual([row["label"] for row in result["flagged"]], ["SINUS RHYTHM"])
+        # Only the one class this (deliberately partial) default file covers.
+        self.assertEqual(result["thresholded_labels"], ["SINUS RHYTHM"])
+
+    def test_a_partial_default_set_does_not_claim_every_class_was_thresholded(self):
+        # The regression this exists for: a 23-of-150-class default file (this repo's
+        # provisional fold-10 derivation) must not make every other class report
+        # aboveThreshold=false downstream -- thresholded_labels is how contract.to_observations
+        # tells "no threshold to clear" apart from "checked and absent".
+        (Path(self.tmpdir.name) / "thresholds_1lead_II.json").write_text(
+            json.dumps({"SINUS RHYTHM": 0.99, "ATRIAL FIBRILLATION": 0.5})
+        )
+
+        with mock.patch.object(interpret_ecg, "THRESHOLDS_DIR", self.tmpdir.name):
+            result = interpret_csv(str(self.csv_path), pathway="rhythm", model=FakeModel({SINUS_RHYTHM_INDEX: 0.9}))
+
+        self.assertEqual(result["thresholded_labels"], sorted(["SINUS RHYTHM", "ATRIAL FIBRILLATION"]))
+        self.assertNotIn("NORMAL ECG", result["thresholded_labels"])
 
     def test_an_explicit_flat_threshold_wins_over_the_default_file(self):
         (Path(self.tmpdir.name) / "thresholds_1lead_II.json").write_text(json.dumps({"SINUS RHYTHM": 0.99}))
@@ -136,6 +187,8 @@ class TestInterpretCsvDefaultThresholds(unittest.TestCase):
             )
 
         self.assertEqual(result["threshold_source"], "flat=0.1")
+        # A flat threshold applies to every class, unlike a partial per-class file.
+        self.assertEqual(result["thresholded_labels"], sorted(TASKS))
 
     def test_an_explicit_thresholds_dict_wins_over_the_default_file(self):
         (Path(self.tmpdir.name) / "thresholds_1lead_II.json").write_text(json.dumps({"SINUS RHYTHM": 0.99}))
@@ -149,6 +202,44 @@ class TestInterpretCsvDefaultThresholds(unittest.TestCase):
             )
 
         self.assertEqual(result["threshold_source"], "per-class")
+
+
+class TestInterpretRhythmLeadSelection(unittest.TestCase):
+    """interpret_csv's rhythm_leads (through interpret_rhythm/select_rhythm_leads) is where
+    assess_quality's lead selection actually shows up in a result -- see test_quality.py for
+    the selection logic itself.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.csv_path = Path(self.tmpdir.name) / "ecg_timeseries_canonical.csv"
+
+    def test_v1_is_left_out_of_rhythm_leads_when_a_preferred_strip_is_present(self):
+        # The realistic 3x4-with-rhythm-strips shape: II, V1 and V5 all full length. Only
+        # the preferred ones (II, V5) end up in rhythm_leads and therefore in the averaged
+        # result; V1 is reported as available (signal_quality) but not used.
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
+        write_canonical_csv(self.csv_path, coverage)
+
+        with mock.patch.object(interpret_ecg, "THRESHOLDS_DIR", self.tmpdir.name):
+            result = interpret_csv(str(self.csv_path), pathway="rhythm", model=FakeModel())
+
+        self.assertEqual(result["rhythm_leads"], ["II", "V5"])
+        self.assertEqual(result["signal_quality"]["full_length_leads"], ["II", "V5", "V1"])
+        self.assertTrue(any("V1" in w and "left out" in w for w in result["warnings"]))
+
+    def test_v1_alone_still_drives_rhythm_leads(self):
+        # No preferred lead reached full length, so the fallback (every full-length lead)
+        # applies and V1 is used, same as select_rhythm_leads on its own.
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"V1": 1.0}
+        write_canonical_csv(self.csv_path, coverage)
+
+        with mock.patch.object(interpret_ecg, "THRESHOLDS_DIR", self.tmpdir.name):
+            result = interpret_csv(str(self.csv_path), pathway="rhythm", model=FakeModel())
+
+        self.assertEqual(result["rhythm_leads"], ["V1"])
+        self.assertFalse(result["degraded"])
 
 
 if __name__ == "__main__":
