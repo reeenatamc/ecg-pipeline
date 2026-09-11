@@ -153,6 +153,51 @@ class TestFailureReason(unittest.TestCase):
 
         self.assertEqual(failure_reason(result), "server-error")
 
+    def test_a_fragmented_trace_with_a_known_layout_is_trace_incomplete(self):
+        # The layout matched and the CSV exists, but no lead was printed at full length:
+        # the photograph is the problem, and the user should be told to retake it rather
+        # than that the server failed.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "digitization": {"lead_layout": "standard_3x4"},
+            "signal_quality": {
+                "leads_with_signal": ["I", "II"],
+                "full_length_leads": [],
+                "needs_full_length": True,
+                "degraded": True,
+            },
+        }
+
+        self.assertEqual(failure_reason(result), "trace-incomplete")
+
+    def test_no_signal_at_all_is_trace_incomplete(self):
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "digitization": {"lead_layout": "standard_3x4"},
+            "signal_quality": {"leads_with_signal": [], "full_length_leads": [], "needs_full_length": True},
+        }
+
+        self.assertEqual(failure_reason(result), "trace-incomplete")
+
+    def test_a_pathway_that_degrades_itself_is_not_trace_incomplete(self):
+        # morphology and 12lead set degraded on their own quality dict for reasons that say
+        # nothing about the trace; that must not be reported as a bad photograph.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "digitization": {"lead_layout": "standard_3x4"},
+            "signal_quality": {
+                "leads_with_signal": ["I", "II", "V1"],
+                "full_length_leads": ["II"],
+                "needs_full_length": False,
+                "degraded": True,
+            },
+        }
+
+        self.assertEqual(failure_reason(result), "unexpected")
+
 
 class TestToAnalysis(unittest.TestCase):
     def test_a_degraded_result_is_not_handed_over_as_ready(self):

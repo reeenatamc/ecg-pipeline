@@ -130,12 +130,33 @@ def to_observations(result: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def trace_incomplete(quality: dict[str, Any] | None) -> bool:
+    """Did the digitization come back too fragmented to read, by ``assess_quality``'s rules?
+
+    Mirrors the two conditions under which that function degrades a record: no lead
+    carries any signal, or the pathway needs a full-length strip and none was printed. It
+    is read off the fields rather than off ``quality["degraded"]`` because the morphology
+    and 12lead pathways set that flag for reasons of their own that say nothing about the
+    trace.
+    """
+    if not quality:
+        return False
+    if not quality.get("leads_with_signal"):
+        return True
+    return bool(quality.get("needs_full_length")) and not quality.get("full_length_leads")
+
+
 def failure_reason(result: dict[str, Any]) -> str | None:
     """Map a pipeline failure onto the contract's closed set of causes.
 
     ``grid-not-detected`` is never produced: when the digitizer cannot find the grid it
     raises per-image and writes nothing at all, which reaches us as an image that produced
     no output and is indistinguishable from any other unreadable one.
+
+    ``trace-incomplete`` is the case the contract lacked for a long time: the image was
+    read and a layout was found, but the trace came back too fragmented to interpret. It
+    used to land on ``unexpected``, which told the user something had gone wrong on the
+    server when what had gone wrong was the photograph.
     """
     if not result.get("degraded"):
         return None
@@ -146,6 +167,8 @@ def failure_reason(result: dict[str, Any]) -> str | None:
     layout = (result.get("digitization") or {}).get("lead_layout")
     if layout == "Unknown layout":
         return "unsupported-mount"
+    if trace_incomplete(result.get("signal_quality")):
+        return "trace-incomplete"
     return "unexpected"
 
 

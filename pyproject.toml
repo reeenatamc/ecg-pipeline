@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ecg-pipeline"
-version = "0.1.0"
+version = "0.1.1"
 description = "ECG image -> digitized time series -> diagnostic interpretation"
 requires-python = ">=3.10"
 # Bounds mirror requirements.txt; see the comments there for why each one exists.
