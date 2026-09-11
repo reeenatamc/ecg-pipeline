@@ -61,9 +61,12 @@ The `.pth` checkpoints are downloaded at setup time and are not stored in git.
 MIT is permissive: bundling, modification, and commercial use are allowed provided the
 copyright notice and permission notice are retained. Retain them.
 
-Upstream requires that the preprocessing in its `dataset.py` (filtering, z-score
-normalization) be followed when using the pretrained weights; `interpret_ecg.py`
-implements this.
+The pretrained weights expect the input prepared as upstream's `dataset.py` prepares
+it, and that file does exactly two things: `nan_to_num` and a global z-score
+(`(x - mean) / (std + 1e-8)` over the whole array). It applies no filtering of any kind,
+no bandpass, no notch, no baseline removal, no resampling. `waveform.zscore` is that
+normalization, and the NaN handling is done more carefully upstream of it (gaps are
+trimmed or interpolated per lead rather than zeroed). Nothing else is required.
 
 
 Everything else in this repository is original work; see LICENSE.

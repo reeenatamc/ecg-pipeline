@@ -257,16 +257,11 @@ Se pasan con `--thresholds umbrales.json` (un `{etiqueta: umbral}`) o un `--thre
 
 ## 5. Tres cosas abiertas que deberías saber
 
-**1. El filtrado de ECGFounder no está implementado.** El `NOTICE` afirma que
-«upstream requiere que se siga el preprocesado de su `dataset.py` (filtrado, normalización
-z-score); `interpret_ecg.py` lo implementa». **Solo está el z-score.** Busqué
-`butter|bandpass|filtfilt|sosfilt|notch` en todo el módulo de interpretación: no hay
-ninguno.
-
-Puede que dé igual —una señal digitalizada de papel ya viene limitada en banda por la
-impresión y el escaneo, y no arrastra red eléctrica ni deriva de línea base como un
-registro crudo— pero **nadie lo ha medido**. O se implementa el filtro, o se corrige el
-NOTICE. Ahora mismo el documento promete más de lo que el código hace.
+**1. El preprocesado de ECGFounder es solo el z-score, y eso es correcto.** Una versión
+anterior del `NOTICE` afirmaba que upstream exige «filtrado y normalización z-score». Se
+verificó contra el `dataset.py` de ECGFounder: hace `nan_to_num` y un z-score global, y
+ningún filtro (ni pasabanda, ni notch, ni línea base, ni remuestreo). `waveform.zscore`
+es exactamente esa normalización. El `NOTICE` ya lo dice así. No hay nada que implementar.
 
 **2. No hay datos de validación.** Nada de esto está validado contra ECG con verdad de
 referencia. Los números de arriba son de ejemplos sueltos. Es el bloqueo real del proyecto,
