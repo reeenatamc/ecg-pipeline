@@ -226,6 +226,91 @@ class TestFailureReason(unittest.TestCase):
         self.assertEqual(failure_reason(result), "unexpected")
 
 
+class TestFailureReasonFromGates(unittest.TestCase):
+    """``result["gates"]`` (pipeline.py's stable gate ids) is now the preferred source for
+    ``failure_reason``; the field-based logic above stays only as a fallback for a result
+    that predates it. Each of these results carries deliberately misleading fields -- no
+    ``source_csv``, no ``error``, an "Unknown layout" -- to prove the gate id wins even when
+    the field-based fallback would have picked a different (or no) reason.
+    """
+
+    def base(self, gate: str) -> dict:
+        return {"degraded": True, "source_csv": "x.csv", "gates": [gate]}
+
+    def test_digitizer_no_output_is_unreadable_image(self):
+        self.assertEqual(failure_reason(self.base("digitizer-no-output")), "unreadable-image")
+
+    def test_interpretation_error_is_server_error(self):
+        self.assertEqual(failure_reason(self.base("interpretation-error")), "server-error")
+
+    def test_layout_unknown_is_unsupported_mount(self):
+        self.assertEqual(failure_reason(self.base("layout-unknown")), "unsupported-mount")
+
+    def test_leads_missing_from_template_is_unsupported_mount(self):
+        self.assertEqual(failure_reason(self.base("leads-missing-from-template")), "unsupported-mount")
+
+    def test_rhythm_strip_unverified_is_unsupported_mount(self):
+        self.assertEqual(failure_reason(self.base("rhythm-strip-unverified")), "unsupported-mount")
+
+    def test_no_signal_is_trace_incomplete(self):
+        self.assertEqual(failure_reason(self.base("no-signal")), "trace-incomplete")
+
+    def test_no_full_length_lead_is_trace_incomplete(self):
+        self.assertEqual(failure_reason(self.base("no-full-length-lead")), "trace-incomplete")
+
+    def test_a_blank_scan_whose_interpretation_raised_is_trace_incomplete(self):
+        # The field-based fix for a blank photograph, carried over to the gates. On an empty
+        # trace interpretation always raises, so both ids fire; "interpretation-error" is
+        # listed first and would otherwise blame the server for a picture with nothing on it.
+        both = {"degraded": True, "source_csv": "x.csv", "gates": ["no-signal", "interpretation-error"]}
+        only_the_error = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "gates": ["interpretation-error"],
+            "signal_quality": {"leads_with_signal": []},
+        }
+
+        self.assertEqual(failure_reason(both), "trace-incomplete")
+        self.assertEqual(failure_reason(only_the_error), "trace-incomplete")
+
+    def test_an_interpretation_error_with_signal_present_is_still_server_error(self):
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "gates": ["interpretation-error"],
+            "signal_quality": {"leads_with_signal": ["II", "V5"]},
+        }
+
+        self.assertEqual(failure_reason(result), "server-error")
+
+    def test_an_empty_gates_list_falls_through_to_unexpected(self):
+        # degraded for a reason none of the gate ids cover -- gates is present (so the
+        # field-based fallback does not run) but empty.
+        self.assertEqual(failure_reason({"degraded": True, "source_csv": "x.csv", "gates": []}), "unexpected")
+
+    def test_first_match_wins_in_severity_order(self):
+        # An unknown layout also fails lead completeness by construction; the more specific
+        # "layout-unknown" is listed first in _GATE_REASONS and must win.
+        result = {"degraded": True, "source_csv": "x.csv", "gates": ["leads-missing-from-template", "layout-unknown"]}
+
+        self.assertEqual(failure_reason(result), "unsupported-mount")
+
+    def test_digitizer_no_output_wins_even_with_other_gates_present(self):
+        result = {"degraded": True, "gates": ["layout-unknown", "digitizer-no-output"]}
+
+        self.assertEqual(failure_reason(result), "unreadable-image")
+
+    def test_a_clean_result_with_gates_present_has_no_failure(self):
+        self.assertIsNone(failure_reason({"degraded": False, "gates": []}))
+
+    def test_a_result_without_gates_still_uses_the_field_based_fallback(self):
+        # No "gates" key at all -- e.g. older interpretation JSON written before this field
+        # existed. Same result as test_an_unidentified_layout_is_an_unsupported_mount above.
+        result = {"degraded": True, "source_csv": "x.csv", "digitization": {"lead_layout": "Unknown layout"}}
+
+        self.assertEqual(failure_reason(result), "unsupported-mount")
+
+
 class TestToAnalysis(unittest.TestCase):
     def test_a_degraded_result_is_not_handed_over_as_ready(self):
         # The distinction the whole pipeline exists for. The contract has no third state,

@@ -20,3 +20,8 @@ pillow>=10.2
 
 # Imported by the vendored ECGFounder net1d.py.
 matplotlib>=3.8
+
+# Reads the digitizer's lead-layout templates (data, not code -- see pipeline.py) to check
+# a matched layout's own lead count and wildcard rhythm leads. Already present in the
+# digitizer's own venv; declared here too since the pipeline imports it directly now.
+pyyaml>=6.0

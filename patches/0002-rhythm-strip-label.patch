@@ -1,0 +1,220 @@
+diff --git a/src/model/lead_identifier.py b/src/model/lead_identifier.py
+index 62c8845..65c77b5 100644
+--- a/src/model/lead_identifier.py
++++ b/src/model/lead_identifier.py
+@@ -11,6 +11,12 @@ from scipy.optimize import linear_sum_assignment
+ class LeadIdentifier:
+     LEAD_CHANNEL_ORDER: list[str] = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+ 
++    # Minimum lead-name U-Net confidence (peak softmax prob in the channel) required to
++    # let a printed label override the cosine-similarity guess for a wildcard rhythm
++    # strip. Higher than the base detection threshold (0.8 by default) because a wrong
++    # override is worse than falling back to similarity.
++    RHYTHM_LABEL_MIN_CONF: float = 0.9
++
+     def __init__(
+         self,
+         *,
+@@ -84,12 +90,73 @@ class LeadIdentifier:
+         y_norm = y_norm / torch.linalg.norm(y_norm, keepdim=True)
+         return float(torch.dot(x_norm, y_norm).item())
+ 
+-    def _canonicalize_lines(self, lines: torch.Tensor, match: dict[str, Any]) -> torch.Tensor:
++    def _row_y_bounds(self, lines: torch.Tensor) -> torch.Tensor:
++        """Pixel-space vertical band owned by each trace row.
++
++        Rows are already sorted top-to-bottom (see ``_merge_nonoverlapping_lines``).
++        Each row's band is bounded by the midpoints to its neighbours' mean position,
++        rather than the row's own min/max excursion: a quiet rhythm strip can swing far
++        less than the space it occupies on the page, and the printed lead-name label
++        sits in that page space, not necessarily on the trace itself.
++
++        Must be called on ``lines`` before ``normalize()`` mean-centers it, since that
++        is what still carries each row's absolute position in the aligned image (the
++        same coordinate frame the lead-name U-Net runs on).
++        """
++        means: torch.Tensor = torch.nanmean(lines, dim=1)
++        midpoints: torch.Tensor = (means[:-1] + means[1:]) / 2
++        lo = torch.cat([means.new_tensor([float("-inf")]), midpoints])
++        hi = torch.cat([midpoints, means.new_tensor([float("inf")])])
++        return torch.stack([lo, hi], dim=1)
++
++    def _row_label_candidates(
++        self, probs: torch.Tensor, row_y_bounds: torch.Tensor
++    ) -> list[Optional[tuple[str, float]]]:
++        """For each trace row, the best-matching lead name printed in its own band.
++
++        The same lead name is often printed more than once on the page (e.g. "II" on
++        both the limb-lead row and a rhythm strip below it), and the two occurrences
++        can look alike enough (I/II/III in particular) to both light up one channel.
++        A single whole-image centroid per channel conflates such occurrences; taking
++        the max within each row's own band instead does not.
++
++        Args:
++            probs: Un-thresholded per-lead-name softmax probs, ``[1, 12, H, W]``.
++            row_y_bounds: Per-row (min_y, max_y) pixel bounds from ``_row_y_bounds``,
++                in the same pixel frame as ``probs``.
++
++        Returns:
++            One (lead_name, confidence) pair per row -- the highest-scoring channel
++            anywhere in that row's band -- or ``None`` for a row with no band.
++        """
++        arr: NDArray[Any] = probs[0].cpu().numpy()
++        height = arr.shape[1]
++        candidates: list[Optional[tuple[str, float]]] = []
++        for row_min, row_max in row_y_bounds.tolist():
++            lo = 0 if row_min == float("-inf") else max(0, int(row_min))
++            hi = height if row_max == float("inf") else min(height, int(row_max))
++            if hi <= lo:
++                candidates.append(None)
++                continue
++            band_max: NDArray[Any] = arr[:, lo:hi, :].max(axis=(1, 2))
++            best_channel = int(np.argmax(band_max))
++            candidates.append((self.LEAD_CHANNEL_ORDER[best_channel], float(band_max[best_channel])))
++        return candidates
++
++    def _canonicalize_lines(
++        self,
++        lines: torch.Tensor,
++        match: dict[str, Any],
++        row_labels: Optional[list[Optional[tuple[str, float]]]] = None,
++    ) -> torch.Tensor:
+         """Reorders and flips lines to a canonical 12-lead format.
+ 
+         Args:
+             lines: Tensor of lines.
+             match: Layout match info.
++            row_labels: Per-row best printed-label guess from ``_row_label_candidates``,
++                aligned with ``lines`` rows before any flip below. Used to identify a
++                wildcard rhythm row by its own printed lead name when confident enough.
+ 
+         Returns:
+             Canonicalized tensor.
+@@ -116,6 +183,8 @@ class LeadIdentifier:
+             else:
+                 lines_max_val = 1.0  # type: ignore
+             lines = lines_max_val - lines
++            if row_labels is not None:
++                row_labels = list(reversed(row_labels))
+ 
+         lead_names: list[str] = []
+         for row in leads_def:
+@@ -147,36 +216,65 @@ class LeadIdentifier:
+                     canonical[canon_idx, start:end] = sign * chunk
+                     used_indices.add((canon_idx, start, end))
+ 
+-        # If there are any rythm, leads, we try to match them with the canonical leads, through cosine similarity.
++        # If there are any rhythm leads, we try to match them with the canonical leads.
++        # Limb leads are morphologically similar (e.g. II, III, aVF), so cosine similarity
++        # alone confuses them. A wildcard rhythm strip usually has its lead name printed
++        # under it, which the lead-name U-Net already segments for the whole image, so we
++        # prefer that label when one lands on the strip's row. Cosine similarity is the
++        # fallback for rows the labels don't resolve.
+         num_rhythm_leads: int = len(rhythm_leads)
+         if num_rhythm_leads > 0:
+-            rhythm_corrs: NDArray[np.float32] = np.full((num_rhythm_leads, num_leads), -1, dtype=np.float32)
+-            for i in range(num_rhythm_leads):
+-                rhythm_vec: torch.Tensor = lines[-num_rhythm_leads + i, :]
+-                for j in range(num_leads):
+-                    corr: float = self._nan_cossim(rhythm_vec, canonical[j, :])
+-                    rhythm_corrs[i, j] = corr
+-
+-            # Leads II, V1 and V5 are most commonly used for rhythm, so we inflate their cosine similarity.
+-            # Other matches are still possible.
+-            if num_rhythm_leads == 1:
+-                rhythm_corrs[:, 1] = self._inflate_cossim(rhythm_corrs[:, 1])
+-            elif num_rhythm_leads == 2:
+-                rhythm_corrs[:, 1] = self._inflate_cossim(rhythm_corrs[:, 1])
+-                rhythm_corrs[:, 6] = self._inflate_cossim(rhythm_corrs[:, 6])
+-            elif num_rhythm_leads == 3:
+-                rhythm_corrs[:, 1] = self._inflate_cossim(rhythm_corrs[:, 1])
+-                rhythm_corrs[:, 6] = self._inflate_cossim(rhythm_corrs[:, 6])
+-                rhythm_corrs[:, 10] = self._inflate_cossim(rhythm_corrs[:, 10])
+-            try:
+-                row_idx, col_idx = linear_sum_assignment(-rhythm_corrs)
+-                for i_r, i_c in zip(row_idx, col_idx):
+-                    corr_val: float = rhythm_corrs[i_r, i_c]
+-                    print(f"Rhythm {i_r} → Canonical {canonical_order[i_c]} (corr={corr_val:.2f})")
+-                    canonical[i_c, :] = lines[-num_rhythm_leads + i_r, :]
+-            except ValueError:
+-                if self.debug:
+-                    print("Linear sum assignment failed, possibly due to NaN values in rhythm correlations.")
++            first_rhythm_row: int = lines.shape[0] - num_rhythm_leads
++            resolved: dict[int, int] = {}
++            if row_labels is not None:
++                for i in range(num_rhythm_leads):
++                    row = first_rhythm_row + i
++                    candidate = row_labels[row] if row < len(row_labels) else None
++                    if candidate is None:
++                        continue
++                    name, conf = candidate
++                    if name not in canonical_order or conf < self.RHYTHM_LABEL_MIN_CONF:
++                        continue
++                    canon_idx = canonical_order.index(name)
++                    if canon_idx in resolved.values():
++                        continue  # already claimed by another strip's label this round
++                    resolved[i] = canon_idx
++                    print(f"Rhythm {i} → Canonical {name} (label, conf={conf:.2f})")
++                    canonical[canon_idx, :] = lines[row, :]
++
++            remaining: list[int] = [i for i in range(num_rhythm_leads) if i not in resolved]
++            if remaining:
++                rhythm_corrs: NDArray[np.float32] = np.full((len(remaining), num_leads), -1, dtype=np.float32)
++                for r, i in enumerate(remaining):
++                    rhythm_vec: torch.Tensor = lines[first_rhythm_row + i, :]
++                    for j in range(num_leads):
++                        corr: float = self._nan_cossim(rhythm_vec, canonical[j, :])
++                        rhythm_corrs[r, j] = corr
++
++                # Leads II, V1 and V5 are most commonly used for rhythm, so we inflate their cosine similarity.
++                # Other matches are still possible.
++                if num_rhythm_leads == 1:
++                    rhythm_corrs[:, 1] = self._inflate_cossim(rhythm_corrs[:, 1])
++                elif num_rhythm_leads == 2:
++                    rhythm_corrs[:, 1] = self._inflate_cossim(rhythm_corrs[:, 1])
++                    rhythm_corrs[:, 6] = self._inflate_cossim(rhythm_corrs[:, 6])
++                elif num_rhythm_leads == 3:
++                    rhythm_corrs[:, 1] = self._inflate_cossim(rhythm_corrs[:, 1])
++                    rhythm_corrs[:, 6] = self._inflate_cossim(rhythm_corrs[:, 6])
++                    rhythm_corrs[:, 10] = self._inflate_cossim(rhythm_corrs[:, 10])
++                for canon_idx in resolved.values():
++                    rhythm_corrs[:, canon_idx] = -1e6  # already assigned by a label match above
++
++                try:
++                    row_idx, col_idx = linear_sum_assignment(-rhythm_corrs)
++                    for i_r, i_c in zip(row_idx, col_idx):
++                        i = remaining[i_r]
++                        corr_val: float = rhythm_corrs[i_r, i_c]
++                        print(f"Rhythm {i} → Canonical {canonical_order[i_c]} (similarity, corr={corr_val:.2f})")
++                        canonical[i_c, :] = lines[first_rhythm_row + i, :]
++                except ValueError:
++                    if self.debug:
++                        print("Linear sum assignment failed, possibly due to NaN values in rhythm correlations.")
+ 
+         return canonical
+ 
+@@ -457,6 +555,7 @@ class LeadIdentifier:
+         layout_should_include_substring: Optional[str] = None,
+     ) -> dict[str, Any]:
+         lines = self._merge_nonoverlapping_lines(lines)
++        row_y_bounds: torch.Tensor = self._row_y_bounds(lines)
+         lines = -self.normalize(lines, avg_pixel_per_mm, mv_per_mm)
+         layouts = self.layouts.copy()
+ 
+@@ -473,6 +572,7 @@ class LeadIdentifier:
+             logits: torch.Tensor = self.unet(feature_map.to(self.device))  # [1,13,H,W]
+             probs: torch.Tensor = torch.softmax(logits, dim=1)[:, :12]  # [1,12,H,W]
+             probs[:, 0] = 0  # Ignore the position of the "I" lead as it is particularly prone to false positives.
++        row_labels: list[Optional[tuple[str, float]]] = self._row_label_candidates(probs, row_y_bounds)
+         probs[probs < threshold] = 0
+         detected: list[tuple[str, float, float]] = self._extract_lead_points(probs, self.LEAD_CHANNEL_ORDER)
+         if len(detected) <= 2:
+@@ -485,7 +585,7 @@ class LeadIdentifier:
+             print(f"No matching layout found, defaulting to first layout: {list(layouts.keys())[0]}")
+             match["layout"] = list(layouts.keys())[0]
+ 
+-        canonical_lines = self._canonicalize_lines(lines.clone(), match)
++        canonical_lines = self._canonicalize_lines(lines.clone(), match, row_labels)
+ 
+         return {
+             "rows_in_layout": rows_in_layout,

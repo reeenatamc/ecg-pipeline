@@ -150,7 +150,7 @@ A digitizer that fails still produces a CSV, and ECGFounder will happily score n
 0.99. Every result therefore carries `degraded`, `warnings`, `digitization`, and
 `signal_quality`. **Read `degraded` before `topk`.**
 
-Three independent gates, all needed. None catches the others' failures:
+Five independent gates, all needed. None catches the others' failures:
 
 1. **Layout** (from the digitizer's `digitization_metadata.csv`). When no layout matches,
    the digitizer emits `lead_layout: "Unknown layout"`, canonicalization returns an
@@ -164,9 +164,40 @@ Three independent gates, all needed. None catches the others' failures:
    complete-looking result for whatever leads that layout happens to have. Any lead short
    of the full twelve is therefore named in the warnings, "9 of 12" on a 3×3 print is
    expected, "6 of 12" on a 3×4 is a wrong layout.
+4. **Template completeness.** Gate 3 only compares against the full twelve, so a layout
+   that legitimately defines fewer leads passes it even when the match itself is wrong: a
+   slide screenshot matched `cabrera_6x1_limb` (a 6-lead limb layout) at cost 1.45 and came
+   back with 5 of its own 6 leads carrying signal, clean on every earlier gate. This reads
+   the matched layout's own template -- from the digitizer's `lead_layouts_all.yml`, plus
+   this repo's own layouts in `configs/` -- and flags any lead the template defines that the
+   signal does not have. When the template cannot be read, this gate warns rather than
+   guesses and does not degrade the record on its own.
+5. **Rhythm-strip identity.** On a 3×4 print with a wildcard rhythm lead
+   (`standard_3x4_with_rN`), the digitizer identifies which lead the strip is by cosine
+   similarity rather than the print's own label, and that guess is sometimes wrong: a strip
+   printed as II has come back identified as aVF, or as V3. A full-length lead outside the
+   conventional strip set -- II, V1, V5, per AHA/ACCF/HRS 2007 -- is flagged as unverified.
+   A layout with no wildcard rhythm lead (a 12×1, a 6×2) never triggers this.
 
-All three run on `--digitize-only` too, so `--fail-on-degraded` is meaningful without
+All five run on `--digitize-only` too, so `--fail-on-degraded` is meaningful without
 paying for the interpretation stage.
+
+Every result also carries `gates`: the stable, machine-readable ids of whichever gates
+fired, alongside the prose in `warnings`. `contract.py` reads this list to pick a
+`failure_reason` instead of re-parsing warning text, and `_report_record` prints the ids
+next to `[DEGRADED]` on the CLI. Gate 3 only ever warns, never degrades, so it has no id.
+
+| Gate | id(s) |
+|---|---|
+| 1. Layout | `layout-unknown` |
+| 2. Coverage | `no-signal` (nothing recovered at all), `no-full-length-lead` (no lead reached `--coverage-min`) |
+| 4. Template completeness | `leads-missing-from-template` |
+| 5. Rhythm-strip identity | `rhythm-strip-unverified` |
+
+Two more ids are not gates on the signal itself but cover the batch-level failures the
+contract also has to classify: `digitizer-no-output` (the image the digitizer skipped, see
+[Batch runs](#batch-runs)) and `interpretation-error` (an exception raised inside the
+interpretation stage).
 
 Observed on the sample ECGs:
 
