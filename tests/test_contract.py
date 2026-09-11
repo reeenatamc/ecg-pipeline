@@ -135,6 +135,45 @@ class TestObservations(unittest.TestCase):
     def test_ids_survive_punctuation(self):
         self.assertEqual(observation_id("1st DEGREE AV BLOCK"), "1st-degree-av-block")
 
+    def test_no_flagged_key_means_ranking_only(self):
+        # interpret_csv sets threshold_source but not "flagged" only when it resolved
+        # neither an explicit nor a default threshold -- see interpret_ecg.default_thresholds.
+        result = {"pathway": "rhythm", "rhythm_leads": ["II"], "topk": [{"label": "A", "prob": 0.9}]}
+
+        observations = to_observations(result)
+
+        self.assertIsNone(observations[0]["aboveThreshold"])
+
+    def test_flagged_findings_come_first_marked_above_threshold(self):
+        result = {
+            "pathway": "rhythm",
+            "rhythm_leads": ["II"],
+            "topk": [{"label": "A", "prob": 0.9}, {"label": "B", "prob": 0.2}],
+            "flagged": [{"label": "A", "prob": 0.9, "threshold": 0.5}],
+        }
+
+        observations = to_observations(result)
+
+        self.assertEqual([(o["label"], o["aboveThreshold"]) for o in observations], [("A", True), ("B", False)])
+
+    def test_a_flagged_finding_outside_the_topk_still_appears(self):
+        # flagged_findings scans every class; topk is only the top slice, so a class can
+        # clear its threshold and still fall outside it.
+        result = {
+            "pathway": "rhythm",
+            "rhythm_leads": ["II"],
+            "topk": [{"label": "A", "prob": 0.9}],
+            "flagged": [
+                {"label": "A", "prob": 0.9, "threshold": 0.5},
+                {"label": "Z", "prob": 0.6, "threshold": 0.5},
+            ],
+        }
+
+        observations = to_observations(result)
+
+        self.assertEqual([o["label"] for o in observations], ["A", "Z"])
+        self.assertTrue(all(o["aboveThreshold"] for o in observations))
+
 
 class TestFailureReason(unittest.TestCase):
     def test_a_clean_result_has_no_failure(self):

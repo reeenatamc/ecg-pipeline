@@ -83,6 +83,23 @@ WEIGHTS_DIR = os.environ.get("ECGFOUNDER_WEIGHTS_DIR", os.path.join(REPO_ROOT, "
 DEFAULT_1LEAD_CKPT = os.path.join(WEIGHTS_DIR, "1_lead_ECGFounder.pth")
 DEFAULT_12LEAD_CKPT = os.path.join(WEIGHTS_DIR, "12_lead_ECGFounder.pth")
 
+# Same override convention as WEIGHTS_DIR above, for the per-class thresholds
+# scripts/derive_thresholds_colab.ipynb produces. See configs/thresholds/README.md.
+THRESHOLDS_DIR = os.environ.get("ECGFOUNDER_THRESHOLDS_DIR", os.path.join(REPO_ROOT, "configs", "thresholds"))
+
+# rhythm and 1lead run the 1-lead checkpoint; morphology and 12lead run the 12-lead one.
+# The 1-lead file is II, not I: the checkpoint was fine-tuned on lead I, but the strips
+# this pipeline actually feeds it are II/V1/V5 (a 3x4 print has no full-length lead I), II
+# is the one PREFERRED_RHYTHM_LEADS picks first, and II sits inside the checkpoint's own
+# training rotation set per the ECGFounder paper -- see configs/thresholds/README.md for
+# the full reasoning.
+_PATHWAY_THRESHOLD_FILES = {
+    "rhythm": "thresholds_1lead_II.json",
+    "1lead": "thresholds_1lead_II.json",
+    "morphology": "thresholds_12lead.json",
+    "12lead": "thresholds_12lead.json",
+}
+
 # A few labels worth surfacing explicitly as a normality summary.
 SUMMARY_LABELS = ["NORMAL ECG", "NORMAL SINUS RHYTHM", "SINUS RHYTHM", "ABNORMAL ECG"]
 
@@ -121,6 +138,28 @@ def load_tasks(path: str = TASKS_PATH) -> list[str]:
 def load_thresholds(path: str) -> dict[str, float]:
     with open(path, "r") as fin:
         return {str(k): float(v) for k, v in json.load(fin).items()}
+
+
+def default_thresholds(pathway: str) -> dict[str, float] | None:
+    """The notebook-derived thresholds for whatever checkpoint ``pathway`` runs on.
+
+    Returns ``None`` -- never raises -- when the file is absent (nothing derived yet, this
+    repo's state until the Colab run lands) or malformed (partial download, hand-edited
+    typo): either way the caller is meant to fall back to a ranking, not to crash a batch
+    over one bad threshold file. See configs/thresholds/README.md for which file is which
+    and why the 1-lead one is II.
+    """
+    name = _PATHWAY_THRESHOLD_FILES.get(pathway)
+    if name is None:
+        return None
+    path = os.path.join(THRESHOLDS_DIR, name)
+    if not os.path.isfile(path):
+        return None
+    try:
+        return load_thresholds(path)
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        print(f"[warn] {path}: could not load thresholds ({exc}); ranking only", file=sys.stderr)
+        return None
 
 
 def build_12lead_montage(
@@ -415,9 +454,24 @@ def interpret_csv(
         "degraded": bool(quality["degraded"]),
         "warnings": warnings,
     }
+    # Neither an explicit --thresholds file nor a flat --threshold was given: fall back to
+    # whatever the notebook derived for this pathway's checkpoint, if it has landed yet.
+    # In the rhythm pathway ``probs`` is already the mean over strips (interpret_rhythm
+    # above), so these thresholds are applied to that combined vector, not to any one lead.
+    default_source: str | None = None
+    if thresholds is None and flat_threshold is None:
+        thresholds = default_thresholds(pathway)
+        if thresholds is not None:
+            default_source = _PATHWAY_THRESHOLD_FILES[pathway]
+
     if thresholds is not None or flat_threshold is not None:
         result["flagged"] = flagged_findings(probs, tasks, thresholds, flat_threshold)
-        result["threshold_source"] = "per-class" if thresholds else f"flat={flat_threshold}"
+        if default_source is not None:
+            result["threshold_source"] = f"default:{default_source}"
+        else:
+            result["threshold_source"] = "per-class" if thresholds else f"flat={flat_threshold}"
+    else:
+        result["threshold_source"] = "none"
     return result
 
 

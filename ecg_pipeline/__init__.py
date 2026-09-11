@@ -6,4 +6,4 @@ Stage 2 (interpretation) runs ECGFounder in-process.
 See NOTICE for third-party attribution and licensing.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
