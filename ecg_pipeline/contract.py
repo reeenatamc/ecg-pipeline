@@ -278,13 +278,22 @@ def trace_incomplete(quality: dict[str, Any] | None) -> bool:
 # leads the signal does not have, or it cannot even say which lead its own rhythm strip is.
 _GATE_REASONS = [
     ("digitizer-no-output", "unreadable-image"),
+    # Before the interpretation error on purpose: a scan that recovered no signal at all
+    # always also fails interpretation ("No usable lead found"), and the cause of that is
+    # the photograph, not the server. Reporting it as a server error told the user to wait
+    # for a fix when what they needed was to retake the picture.
+    ("no-signal", "trace-incomplete"),
     ("interpretation-error", "server-error"),
     ("layout-unknown", "unsupported-mount"),
     ("leads-missing-from-template", "unsupported-mount"),
     ("rhythm-strip-unverified", "unsupported-mount"),
-    ("no-signal", "trace-incomplete"),
     ("no-full-length-lead", "trace-incomplete"),
 ]
+
+
+def _recovered_no_signal(result: dict[str, Any]) -> bool:
+    """True when the record itself says the digitized trace carried no lead at all."""
+    return (result.get("signal_quality") or {}).get("leads_with_signal") == []
 
 
 def failure_reason(result: dict[str, Any]) -> str | None:
@@ -314,6 +323,15 @@ def failure_reason(result: dict[str, Any]) -> str | None:
 
     if "gates" in result:
         fired = set(result["gates"])
+        # A run that recovered no lead at all failed on the image, even when interpretation
+        # also raised -- on an empty trace it always does, "No usable lead found in
+        # canonical CSV". "interpretation-error" is listed before "no-signal", so without
+        # this a blank photograph came back as server-error, which sends the user to wait
+        # for a fix instead of to take the picture again. The error is a consequence here,
+        # not a fault.
+        if "no-signal" in fired or _recovered_no_signal(result):
+            fired.discard("interpretation-error")
+            fired.add("no-signal")
         for gate_id, reason in _GATE_REASONS:
             if gate_id in fired:
                 return reason
@@ -321,7 +339,11 @@ def failure_reason(result: dict[str, Any]) -> str | None:
 
     if not result.get("source_csv"):
         return "unreadable-image"
-    if "error" in result:
+
+    # Same reasoning as the gates branch above: with no signal recovered, the
+    # interpretation error is a consequence, not a fault. Measured on a blank image pushed
+    # through the whole pipeline, which used to land on server-error here.
+    if "error" in result and not _recovered_no_signal(result):
         return "server-error"
     layout = (result.get("digitization") or {}).get("lead_layout")
     if layout == "Unknown layout":

@@ -23,6 +23,9 @@ else
   echo "==> Using existing checkout at $HOME_DIR"
 fi
 
+# In filename order -- the glob sorts -- because each patch is a diff against the tree
+# the previous ones left behind: applying a later patch to an unpatched checkout is not
+# the same file.
 echo "==> Applying patches"
 shopt -s nullglob
 for PATCH in "$REPO_ROOT"/patches/*.patch; do
