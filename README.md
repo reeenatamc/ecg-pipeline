@@ -258,10 +258,11 @@ Two things it deliberately does not do:
   patient to read). Rewriting them is a clinical and product decision.
 
 A `degraded` result is emitted as `status: "failed"`, not as observations. The contract has
-`ready` and `failed` and nothing in between, and the distinction this pipeline exists to
-draw (a reading versus a reading that must not be trusted) currently has to collapse into
-`failed`. **That is the one field the contract is missing**, and worth raising before the
-backend closes: `AnalysisFailureReason` has no case for "digitized, but too poor to read".
+`ready` and `failed` and nothing in between, so a reading that must not be trusted goes
+over as `failed` with a cause. "Digitized, but too poor to read" is `trace-incomplete`:
+the layout matched and a CSV exists, but no lead carries signal or none was printed at
+full length. It used to collapse into `unexpected`, which told the user the server had
+failed when the photograph had.
 
 ## Tests
 
