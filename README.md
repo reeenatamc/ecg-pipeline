@@ -76,7 +76,7 @@ results = pipeline.run(image_dir="in/", output_dir="out/", pathway="rhythm")
 
 | Pathway | What it does | Trust |
 |---|---|---|
-| `rhythm` (default) | 1-lead model over every full-length rhythm strip (II/V1/V5), opinions averaged | Reliable for rhythm and rate |
+| `rhythm` (default) | 1-lead model over every full-length rhythm strip (II/V1/V5 per AHA/ACCF/HRS 2007; II/V5 preferred -- see `configs/thresholds/README.md`), opinions averaged | Reliable for rhythm and rate |
 | `1lead` | 1-lead model on one chosen lead | Inspection/debugging |
 | `morphology` | Median beat per lead, phase-aligned across all 12, tiled to 10 s → 12-lead model | Morphology only, **never rhythm** |
 | `12lead` | Per-lead ~2.5 s windows assembled into a montage → 12-lead model | Naive; kept for comparison |
@@ -305,14 +305,20 @@ right after digitization -- to show the trace to a user while the interpretation
 still running, say -- instead of reaching into `to_signal` and the digitizer's CSV format
 directly; `to_analysis` calls it internally for the `signal` field above.
 
-Each observation also carries `aboveThreshold`. When a per-class threshold applied to the
-result -- explicit or the default one described above under "Scores are rankings, not
-calibrated probabilities" -- classes that cleared it come first as `true`, followed by the
-rest of the ranking as `false`, so the app can show only the flagged findings or the whole
-thing without a second request. With no threshold applied at all it is `null` on every row:
-"no verdict computed", not "checked and absent". This is an additional field on the
-existing observation shape, not a new one; app-EKG's `observationFrom` parser picks named
-fields off the response rather than rejecting unknown ones, so it reads the rest unaffected.
+Each observation also carries `aboveThreshold`. When a threshold applied to the result --
+explicit or the default one described above under "Scores are rankings, not calibrated
+probabilities" -- classes that cleared it come first as `true`. Among the rest, only the
+classes that actually had a threshold to clear come back `false`; every other class is
+`null`. A flat threshold covers every class, so with one of those the rest of the ranking
+is all `false`, same as before. A per-class threshold set can be partial -- the provisional
+fold-10 set in `configs/thresholds/provisional/` supplies 23 of 150 classes, see
+`configs/thresholds/README.md` -- and for a class with no entry there, "no threshold was
+applied" is a different claim from "checked and absent"; reporting it as `false` would say
+127 classes were ruled out when they were never evaluated. With no threshold applied at all
+it is `null` on every row: "no verdict computed", not "checked and absent". This is an
+additional field on the existing observation shape, not a new one; app-EKG's
+`observationFrom` parser picks named fields off the response rather than rejecting unknown
+ones, so it reads the rest unaffected.
 
 Two things it deliberately does not do:
 

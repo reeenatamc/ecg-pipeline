@@ -39,8 +39,23 @@ class TestAssessQuality(unittest.TestCase):
 
         self.assertFalse(q["degraded"])
         self.assertEqual(q["warnings"], [])
-        self.assertEqual(q["full_length_leads"], ["II", "V1", "V5"])
-        self.assertEqual(q["selected_leads"], ["II", "V1", "V5"])
+        # V1 is still selected and still averaged into the rhythm ensemble -- it is just no
+        # longer *preferred*, so it sorts after II/V5 rather than between them. See
+        # PREFERRED_RHYTHM_LEADS and CONVENTIONAL_STRIP_LEADS in waveform.py.
+        self.assertEqual(q["full_length_leads"], ["II", "V5", "V1"])
+        self.assertEqual(q["selected_leads"], ["II", "V5", "V1"])
+
+    def test_v1_only_full_length_lead_is_still_usable(self):
+        # A print whose only strip is V1 (no II, no V5 reaching full length) must still be
+        # readable: assess_quality falls back to any full-length lead when none of the
+        # preferred ones is present, which is exactly what a V1-only strip is.
+        canonical, names = frame({l: 0.25 for l in CANONICAL_LEADS} | {"V1": 1.0})
+        q = assess_quality(canonical, names)
+
+        self.assertFalse(q["degraded"])
+        self.assertEqual(q["full_length_leads"], ["V1"])
+        self.assertEqual(q["selected_leads"], ["V1"])
+        self.assertEqual(select_rhythm_leads(canonical, names), ["V1"])
 
     def test_preferred_rhythm_leads_come_first(self):
         canonical, names = frame({"I": 1.0, "V5": 1.0, "aVR": 1.0, "II": 1.0})

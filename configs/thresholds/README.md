@@ -46,6 +46,62 @@ ECGFounder's raw ranking, exactly as documented in the README's "Scores are rank
 calibrated probabilities" section. A ranking without thresholds is a legitimate, expected
 mode of this pipeline, not a degraded one.
 
+## Why V1 is no longer a preferred rhythm lead
+
+`PREFERRED_RHYTHM_LEADS` in `waveform.py` used to list `["II", "V1", "V5"]`; it is now
+`["II", "V5"]`. A local derivation on PTB-XL `strat_fold` 10 (2198 records, same procedure
+as the notebook; see `provisional/fold10_2026-09-11/summary.md`) measured the four 1-lead
+checkpoint variants (I, II, V1, V5) separately: on rhythm classes all four are close (AF
+0.98, sinus tachycardia 0.99, sinus bradycardia 0.93-0.95), but V1 collapses on morphology
+classes (RIGHT BUNDLE BRANCH BLOCK AUROC 0.53, chance; NORMAL ECG 0.67) while II and V5
+hold 0.80-0.82. The `rhythm` pathway's combined 150-class vector is the *mean* of every
+full-length strip's own vector, so a lead that is fine on rhythm but at chance on morphology
+still dilutes every morphology class in that average when it is averaged in. II and V5 stay
+preferred because both are inside or near the checkpoint's training rotation (see "Why II,
+not I" above); V1 is still a perfectly conventional strip lead per AHA/ACCF/HRS 2007 and a
+V1-only print still gets read -- `assess_quality` falls back to any full-length lead when
+none of the preferred ones is present, so a print whose only strip is V1 still selects V1.
+Gate 5 in `pipeline.py` (unverified rhythm-strip identity) does not use
+`PREFERRED_RHYTHM_LEADS` at all; it uses the separate `CONVENTIONAL_STRIP_LEADS = ("II",
+"V1", "V5")`, because that gate is about whether the strip is a *known* lead, not about how
+well the checkpoint reads it.
+
+## Provisional thresholds (fold 10)
+
+`provisional/fold10_2026-09-11/` holds a threshold set derived locally (Mac, CPU) on PTB-XL
+`strat_fold` 10 only -- 2198 of the 21799 records, about a tenth of the dataset -- as a
+stopgap while the full-set Colab run (`scripts/derive_thresholds_colab.ipynb`) had not yet
+been run. Same procedure as the notebook (z-score, `optimal_threshold` = balanced-accuracy
+sweep 0.01-0.99, `MIN_POSITIVES=20`), on a smaller sample. It contains the seven
+`thresholds_<variant>.json` files, `metrics.csv` (AUROC/threshold/positives for all 150
+classes x 7 variants), and `summary.md` (in Spanish) with the full numbers and reasoning,
+including the bandpass comparison (+0.006 mean AUROC on 12-lead, -0.002 on 1-lead II --
+not enough of a case to turn bandpass on by default).
+
+**This directory is not auto-loaded.** `default_thresholds` only ever reads
+`configs/thresholds/thresholds_1lead_II.json` and `configs/thresholds/thresholds_12lead.json`
+-- it does not walk subdirectories, so nothing under `provisional/` is picked up unless a
+caller passes it explicitly via `$ECGFOUNDER_THRESHOLDS_DIR` (see
+`tests/test_thresholds.py::TestDefaultThresholdsLoader::test_ignores_subdirectories`).
+
+Only 23 of the 150 classes reach `MIN_POSITIVES=20` in this fold, versus the notebook's
+full 21799 records, which is expected to clear the cutoff for substantially more classes,
+`ATRIAL FLUTTER` (7 positives here) among them. **When the full-set Colab run lands, it
+should replace this set**, by copying its own `thresholds_1lead_II.json` and
+`thresholds_12lead.json` up one level into `configs/thresholds/` (overwriting nothing that
+exists today, since nothing does yet) -- the same two files this README already documents
+as the ones `default_thresholds` resolves.
+
+`NORMAL SINUS RHYTHM` and `ABNORMAL ECG` have zero positives in ECGFounder's PTB-XL label
+mapping -- not a fold artefact, the same is true across the full dataset per
+`ptbxl_label.csv` -- so neither class can ever get a threshold from a PTB-XL derivation
+with this label mapping, no matter how much data is used. Both stay ranking-only
+permanently; `SUMMARY_LABELS` in `interpret_ecg.py` still reports their raw probabilities,
+but a consumer should not expect a `flagged`/`aboveThreshold` verdict for either. More
+generally, `docs/etiquetas_es_borrador.csv` already marks `NORMAL ECG` and `ABNORMAL ECG`
+as summary-only labels (`mostrar_al_usuario: no`) that are best not shown next to specific
+findings in the app -- they describe the whole tracing, not a finding on it.
+
 ## Overriding the location
 
 `$ECGFOUNDER_THRESHOLDS_DIR` points `default_thresholds` at a different directory, the same

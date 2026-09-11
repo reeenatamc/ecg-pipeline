@@ -19,8 +19,29 @@ import numpy.typing as npt
 # Canonical lead order emitted by the digitizer (matches ECGFounder's expected order).
 CANONICAL_LEADS = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 
-# Leads most commonly printed as full-length rhythm strips, in preference order.
-PREFERRED_RHYTHM_LEADS = ["II", "V1", "V5"]
+# Leads most commonly printed as full-length rhythm strips, in preference order for the
+# 1-lead checkpoint's interpretation. V1 is deliberately absent here (see below); it is
+# still a conventional strip lead for gate 5's purposes -- see CONVENTIONAL_STRIP_LEADS.
+PREFERRED_RHYTHM_LEADS = ["II", "V5"]
+
+# The three full-length strips a standard 3x4 print carries per AHA/ACCF/HRS 2007. Unlike
+# PREFERRED_RHYTHM_LEADS above, this set is about what counts as a *known, expected* strip
+# lead for gate 5 (pipeline.py): a V1 strip is exactly as conventional as II or V5 even
+# though the 1-lead checkpoint reads it worse, so a V1-only wildcard rhythm strip must not
+# be flagged "unverified" the way an aVF or V3 strip would be.
+CONVENTIONAL_STRIP_LEADS = ("II", "V1", "V5")
+
+# Why V1 was dropped from PREFERRED_RHYTHM_LEADS (local fold-10 PTB-XL derivation, see
+# configs/thresholds/provisional/fold10_2026-09-11/summary.md and
+# configs/thresholds/README.md): the rhythm pathway's combined 150-class vector is the mean
+# of every full-length strip's own vector, so a lead that is fine on rhythm but at chance on
+# morphology still dilutes every morphology class in that average. On rhythm classes all
+# four single-lead checkpoint variants (I, II, V1, V5) are close (AF 0.98, sinus tachycardia
+# 0.99, sinus bradycardia 0.93-0.95), but V1 collapses on morphology (RBBB AUROC 0.53,
+# chance; NORMAL ECG 0.67) while II and V5 hold 0.80-0.82. II and V5 are inside or near the
+# checkpoint's training distribution -- the ECGFounder paper fine-tunes the 1-lead model
+# across a rotation of limb and precordial leads, not on V1 specifically -- which is the
+# same reasoning configs/thresholds/README.md gives for using II rather than I.
 
 # Standard 3x4 paper layout: the four time columns and the leads printed in each. The three
 # leads within one column ARE simultaneous; different columns are not.
@@ -140,6 +161,11 @@ def assess_quality(
     """
     info = lead_windows(canonical, names)
     full = [l for l in CANONICAL_LEADS if l in info and info[l]["coverage"] >= coverage_min]
+    # Every full-length lead is selected and used, preferred ones first: this is about
+    # ordering, not filtering, so a full-length V1 (or any other incidental full-length
+    # lead) is never dropped from the ensemble -- it only sorts after II/V5. A V1-only
+    # print (nothing else reaches full length) still selects V1, because it lands in the
+    # second half of this list, not the branch below that requires ``ordered`` to be empty.
     ordered = [l for l in PREFERRED_RHYTHM_LEADS if l in full] + [l for l in full if l not in PREFERRED_RHYTHM_LEADS]
 
     # A lead with no samples at all is not a fallback candidate: selecting it would only

@@ -21,7 +21,7 @@ import yaml
 
 from ecg_pipeline import digitizer, preprocess
 from ecg_pipeline.digitizer import CANONICAL_SUFFIX
-from ecg_pipeline.interpret.waveform import PREFERRED_RHYTHM_LEADS
+from ecg_pipeline.interpret.waveform import CONVENTIONAL_STRIP_LEADS
 
 INTERPRETATION_SUFFIX = "_interpretation.json"
 METADATA_FILENAME = "digitization_metadata.csv"
@@ -275,14 +275,18 @@ def _layout_template_warnings(
             )
 
     if _layout_has_wildcard_rhythm(layout):
-        unconventional = sorted(set(quality.get("full_length_leads", [])) - set(PREFERRED_RHYTHM_LEADS))
+        # CONVENTIONAL_STRIP_LEADS, not PREFERRED_RHYTHM_LEADS: this gate is about whether
+        # the identified strip is a *known* AHA/ACCF/HRS 2007 strip lead, which V1 is just
+        # as much as II or V5, even though the 1-lead checkpoint reads V1 worse (that is a
+        # separate, interpretation-side concern -- see waveform.PREFERRED_RHYTHM_LEADS).
+        unconventional = sorted(set(quality.get("full_length_leads", [])) - set(CONVENTIONAL_STRIP_LEADS))
         if unconventional:
             degraded = True
             gates.append(GATE_RHYTHM_STRIP_UNVERIFIED)
             warnings.append(
                 f"Layout {layout!r} attributes its rhythm strip by similarity, not by the "
                 f"print's own label. The full-length lead(s) {', '.join(unconventional)} "
-                f"are not among the conventional strip leads ({', '.join(PREFERRED_RHYTHM_LEADS)}, "
+                f"are not among the conventional strip leads ({', '.join(CONVENTIONAL_STRIP_LEADS)}, "
                 f"per AHA/ACCF/HRS 2007), so the strip's identity is unverified."
             )
 

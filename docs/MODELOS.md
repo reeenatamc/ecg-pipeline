@@ -199,7 +199,7 @@ Como no se puede inventar señal, hay cuatro `--pathway`:
 
 | pathway | qué hace | para qué sirve |
 |---|---|---|
-| **`rhythm`** (por defecto) | checkpoint de 1 derivación sobre cada tira de ritmo completa (II/V1/V5), promediando opiniones | **ritmo y frecuencia**. Es el fiable |
+| **`rhythm`** (por defecto) | checkpoint de 1 derivación sobre cada tira de ritmo completa (II/V1/V5 según AHA/ACCF/HRS 2007; II/V5 preferidas, ver `configs/thresholds/README.md`), promediando opiniones | **ritmo y frecuencia**. Es el fiable |
 | `1lead` | 1 derivación elegida a mano | inspección |
 | `morphology` | latido representativo (mediana) por derivación, alineado en fase entre las doce, repetido hasta 10 s → checkpoint de 12 | **morfología**. **Borra el ritmo** (un latido mediano es perfectamente regular) |
 | `12lead` | montaje ingenuo de las ventanas de cada columna | **comparación histórica, no usar** |

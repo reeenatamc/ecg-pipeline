@@ -245,6 +245,42 @@ class TestObservations(unittest.TestCase):
         self.assertIsNone(observations[0]["aboveThreshold"])
 
     def test_flagged_findings_come_first_marked_above_threshold(self):
+        # A flat threshold applies to every class (interpret_csv's thresholded_labels
+        # wiring), so the non-flagged class still comes back False, same as before this
+        # field existed.
+        result = {
+            "pathway": "rhythm",
+            "rhythm_leads": ["II"],
+            "topk": [{"label": "A", "prob": 0.9}, {"label": "B", "prob": 0.2}],
+            "flagged": [{"label": "A", "prob": 0.9, "threshold": 0.5}],
+            "thresholded_labels": ["A", "B"],
+        }
+
+        observations = to_observations(result)
+
+        self.assertEqual([(o["label"], o["aboveThreshold"]) for o in observations], [("A", True), ("B", False)])
+
+    def test_a_non_flagged_class_with_no_threshold_applied_is_null_not_false(self):
+        # The bug this fixes: a partial per-class threshold set (e.g. 23 of 150 classes)
+        # means most non-flagged classes were never checked against a threshold at all.
+        # "B" is not in thresholded_labels, so it must read null ("no verdict"), not false
+        # ("checked and absent").
+        result = {
+            "pathway": "rhythm",
+            "rhythm_leads": ["II"],
+            "topk": [{"label": "A", "prob": 0.9}, {"label": "B", "prob": 0.2}],
+            "flagged": [{"label": "A", "prob": 0.9, "threshold": 0.5}],
+            "thresholded_labels": ["A"],
+        }
+
+        observations = to_observations(result)
+
+        self.assertEqual([(o["label"], o["aboveThreshold"]) for o in observations], [("A", True), ("B", None)])
+
+    def test_absent_thresholded_labels_key_treats_every_non_flagged_row_as_null(self):
+        # Defensive default for a hand-built result dict that predates thresholded_labels
+        # (e.g. an older interpretation JSON on disk): with no list to consult, "not
+        # flagged" cannot be distinguished from "never checked", so it reads null.
         result = {
             "pathway": "rhythm",
             "rhythm_leads": ["II"],
@@ -254,7 +290,7 @@ class TestObservations(unittest.TestCase):
 
         observations = to_observations(result)
 
-        self.assertEqual([(o["label"], o["aboveThreshold"]) for o in observations], [("A", True), ("B", False)])
+        self.assertIsNone(next(o for o in observations if o["label"] == "B")["aboveThreshold"])
 
     def test_a_flagged_finding_outside_the_topk_still_appears(self):
         # flagged_findings scans every class; topk is only the top slice, so a class can

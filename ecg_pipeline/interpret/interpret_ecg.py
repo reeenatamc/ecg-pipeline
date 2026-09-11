@@ -303,6 +303,28 @@ def flagged_findings(
     return out
 
 
+def thresholded_labels(
+    tasks: list[str],
+    thresholds: dict[str, float] | None = None,
+    default: float | None = None,
+) -> list[str]:
+    """Which labels actually had a threshold to clear, sorted -- distinct from which cleared it.
+
+    A flat ``default`` applies to every label, so it covers all of ``tasks``. A per-class
+    ``thresholds`` dict covers only the labels it has an entry for: with a partial threshold
+    set (this repo's provisional fold-10 derivation supplies 23 of 150 classes, see
+    configs/thresholds/README.md), most labels have no entry and therefore no threshold was
+    ever applied to them -- not "checked and absent", just never checked. ``to_observations``
+    reads this list to tell those two apart instead of defaulting every non-flagged row to
+    ``aboveThreshold: false``.
+    """
+    if default is not None:
+        return sorted(tasks)
+    if thresholds:
+        return sorted(t for t in tasks if t in thresholds)
+    return []
+
+
 def summary_probs(probs: npt.NDArray[np.float64], tasks: list[str]) -> dict[str, float]:
     idx = {t: i for i, t in enumerate(tasks)}
     return {lab: round(float(probs[idx[lab]]), 4) for lab in SUMMARY_LABELS if lab in idx}
@@ -466,6 +488,7 @@ def interpret_csv(
 
     if thresholds is not None or flat_threshold is not None:
         result["flagged"] = flagged_findings(probs, tasks, thresholds, flat_threshold)
+        result["thresholded_labels"] = thresholded_labels(tasks, thresholds, flat_threshold)
         if default_source is not None:
             result["threshold_source"] = f"default:{default_source}"
         else:

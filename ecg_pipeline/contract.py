@@ -219,12 +219,17 @@ def to_observations(result: dict[str, Any]) -> list[dict[str, Any]]:
 
     The whole ranking is emitted, not a top slice: the contract is explicit that this is a
     ranking rather than a verdict, and where to cut it is the interface's call. When
-    ``interpret_csv`` applied per-class thresholds (``result["flagged"]`` present), the
-    classes that cleared theirs come first with ``aboveThreshold: true``, followed by the
-    rest of the top-k with ``aboveThreshold: false`` -- so the app can choose to show only
-    the flagged findings or the full ranking without a second request. When no thresholds
-    applied, every row is the same top-k as always with ``aboveThreshold: null``: that is
-    "no verdict was computed", not "found absent".
+    ``interpret_csv`` applied thresholds (``result["flagged"]`` present), the classes that
+    cleared theirs come first with ``aboveThreshold: true``. Among the rest, only the ones
+    that actually had a threshold to clear (``result["thresholded_labels"]``) get
+    ``aboveThreshold: false``; everything else gets ``null``. A flat threshold applies to
+    every label, so with one of those the rest is all ``false`` -- the old behaviour. A
+    per-class threshold set can be partial (this repo's provisional fold-10 derivation
+    supplies 23 of 150 classes, see configs/thresholds/README.md), and for the classes it
+    has no entry for, "no threshold was applied" is not the same claim as "checked and
+    absent" -- collapsing that distinction to ``false`` would misreport the other 127
+    classes as ruled out when they were simply never evaluated. When no thresholds applied
+    at all, every row is the same top-k as always with ``aboveThreshold: null``.
     """
     leads = observed_leads(result)
 
@@ -240,10 +245,12 @@ def to_observations(result: dict[str, Any]) -> list[dict[str, Any]]:
 
     if "flagged" in result:
         flagged_labels = {row["label"] for row in result["flagged"]}
+        thresholded = set(result.get("thresholded_labels", []))
         observations = [observation(row, True) for row in result["flagged"]]
-        observations += [
-            observation(row, False) for row in result.get("topk", []) if row["label"] not in flagged_labels
-        ]
+        for row in result.get("topk", []):
+            if row["label"] in flagged_labels:
+                continue
+            observations.append(observation(row, False if row["label"] in thresholded else None))
         return observations
 
     return [observation(row, None) for row in result.get("topk", [])]
