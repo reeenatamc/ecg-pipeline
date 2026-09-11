@@ -8,11 +8,15 @@ Three conversions are not cosmetic, and getting any of them wrong would put a pl
 lie on a screen:
 
 * **Units.** The digitizer writes microvolts; ``EcgSignal`` is specified in millivolts.
-* **Gaps are structural.** A lead is a list of continuous segments, each stamped with the
-  second it starts, never a padded array. On a 3x4 print each grid lead exists for 2.5 of
-  the 10 seconds; the app's signal model is built the way it is precisely so that drawing a
-  line across the other 7.5 takes deliberate effort rather than a missing null check. NaNs
-  become absent segments, not zeros.
+* **Gaps are structural, but a dropout is not a gap.** A lead is a list of continuous
+  segments, each stamped with the second it starts, never a padded array. On a 3x4 print
+  each grid lead exists for 2.5 of the 10 seconds; the app's signal model is built the way
+  it is precisely so that drawing a line across the other 7.5 takes deliberate effort
+  rather than a missing null check. Within a printed stretch, though, the digitizer
+  sometimes loses the trace for a handful of milliseconds under a label or a bold grid
+  line; ``lead_segments`` bridges those (see ``MAX_BRIDGED_GAP_SECONDS``) and leaves every
+  longer hole -- the kind that means the machine never recorded that stretch -- as a real
+  split. NaNs that are not bridged become absent segments, not zeros.
 * **Right-sided leads.** The digitizer places a right-sided print's V4R/V5R/V6R into the
   V4/V5/V6 slots, because it identifies leads by position. The app's ``LeadName`` has the
   R names, so the relabel happens here rather than leaving the app to show a right-sided
@@ -47,23 +51,87 @@ SAMPLE_DECIMALS = 4
 RIGHT_SIDED_LAYOUTS = {"limb_aug_right_3x3"}
 RIGHT_SIDED_RELABEL = {"V4": "V4R", "V5": "V5R", "V6": "V6R"}
 
+# Longest internal NaN run ``lead_segments`` will bridge by linear interpolation, in
+# seconds. 0.04 s is one small grid square at the paper's standard 25 mm/s sweep speed --
+# the unit a reader measures the tracing with -- and it is shorter than any QRS complex, so
+# a bridge can never invent or hide a beat. Measured on a real record (study 43be167a):
+# V1-V4 arrive split into 2-3 segments by 14-34 ms holes where the digitizer lost the trace
+# under a label or a bold grid line, while the real gaps on that same record -- a lead only
+# printed for its 2.5 s column, a 1.45 s dropout in a rhythm strip -- are hundreds of
+# milliseconds or more. This threshold sits well below the smallest real gap and above the
+# largest observed digitization artifact.
+MAX_BRIDGED_GAP_SECONDS = 0.04
+
+
+def _internal_nan_runs(values: npt.NDArray[np.float64]) -> list[tuple[int, int]]:
+    """Inclusive (start, end) index pairs of NaN runs with a valid sample on both sides.
+
+    A run touching either edge of the array has nothing to interpolate from -- it is a
+    lead not yet started or already ended, not a dropout inside a printed stretch -- so it
+    is never a candidate for bridging.
+    """
+    idx = np.flatnonzero(np.isnan(values))
+    if idx.size == 0:
+        return []
+    runs = []
+    for run in np.split(idx, np.flatnonzero(np.diff(idx) > 1) + 1):
+        start, end = int(run[0]), int(run[-1])
+        if start == 0 or end == values.size - 1:
+            continue
+        runs.append((start, end))
+    return runs
+
+
+def bridged_holes(values: npt.NDArray[np.float64], fs: int = CANONICAL_FS) -> list[float]:
+    """Durations, in ms, of the internal NaN runs ``lead_segments`` bridges for this lead.
+
+    Mirrors the same ``MAX_BRIDGED_GAP_SECONDS`` threshold rather than re-deriving it, so a
+    caller (``signal_bridging_report``) can report exactly what was interpolated.
+    """
+    max_samples = MAX_BRIDGED_GAP_SECONDS * fs
+    return [
+        round(1000 * (end - start + 1) / fs, 3)
+        for start, end in _internal_nan_runs(values)
+        if (end - start + 1) <= max_samples
+    ]
+
+
+def _bridge_dropouts(values: npt.NDArray[np.float64], fs: int) -> npt.NDArray[np.float64]:
+    """Linearly interpolate internal NaN runs no longer than ``MAX_BRIDGED_GAP_SECONDS``.
+
+    Everything longer is left as NaN for ``lead_segments`` to split on: this only touches
+    the digitization artifact, never the real "lead wasn't printed here" gap. The model
+    path already does the analogous thing for its own purposes (``waveform.clean_lead``);
+    this is the contract's own pass because it must also report what it bridged.
+    """
+    bridged = values.astype(np.float64).copy()
+    max_samples = MAX_BRIDGED_GAP_SECONDS * fs
+    for start, end in _internal_nan_runs(values):
+        if (end - start + 1) <= max_samples:
+            bridged[start : end + 1] = np.interp(
+                np.arange(start, end + 1), [start - 1, end + 1], [values[start - 1], values[end + 1]]
+            )
+    return bridged
+
 
 def lead_segments(
     values: npt.NDArray[np.float64], fs: int = CANONICAL_FS, decimals: int = SAMPLE_DECIMALS
 ) -> list[dict[str, Any]]:
     """Split one lead into its continuous recorded stretches, in millivolts.
 
-    Each NaN run ends a segment: outside a segment there is no datum, and the contract's
-    type is built so that this cannot be quietly interpolated later.
+    Short internal dropouts (see ``MAX_BRIDGED_GAP_SECONDS``) are bridged first. What
+    remains is a real gap: outside a segment there is no datum, and the contract's type is
+    built so that this cannot be quietly interpolated later.
     """
-    valid = np.flatnonzero(~np.isnan(values))
+    bridged = _bridge_dropouts(values, fs)
+    valid = np.flatnonzero(~np.isnan(bridged))
     if valid.size == 0:
         return []
 
     segments: list[dict[str, Any]] = []
     for run in np.split(valid, np.flatnonzero(np.diff(valid) > 1) + 1):
         start, end = int(run[0]), int(run[-1])
-        samples = values[start : end + 1] * MICROVOLTS_TO_MILLIVOLTS
+        samples = bridged[start : end + 1] * MICROVOLTS_TO_MILLIVOLTS
         segments.append(
             {
                 "startSecond": round(start / fs, 6),
@@ -79,7 +147,12 @@ def to_signal(
     fs: int = CANONICAL_FS,
     lead_layout: str = "",
 ) -> dict[str, Any]:
-    """Build ``EcgSignal`` from a canonical frame."""
+    """Build ``EcgSignal`` from a canonical frame.
+
+    Shape is exact and stable (``samplingRateHz``, ``durationSeconds``, ``leads``): app-EKG
+    parses it strictly. Bridged-dropout counts are reported separately, through
+    ``signal_bridging_report``, rather than grown onto this dict.
+    """
     relabel = RIGHT_SIDED_RELABEL if lead_layout in RIGHT_SIDED_LAYOUTS else {}
     leads = []
     for index, name in enumerate(names):
@@ -91,6 +164,36 @@ def to_signal(
         "durationSeconds": round(canonical.shape[1] / fs, 6),
         "leads": leads,
     }
+
+
+def signal_from_csv(csv_path: str, lead_layout: str = "", fs: int = CANONICAL_FS) -> dict[str, Any]:
+    """Build ``EcgSignal`` straight from a digitized canonical CSV.
+
+    The entry point a backend calls right after digitization, before any interpretation:
+    it is exactly what ``to_analysis`` builds internally for its ``signal`` field, exposed
+    on its own so a caller that only needs the trace -- to show it to a user while
+    interpretation is still running, say -- does not have to reach into
+    ``load_canonical_csv`` and ``to_signal`` itself.
+    """
+    canonical, names = load_canonical_csv(csv_path)
+    return to_signal(canonical, names, fs, lead_layout)
+
+
+def signal_bridging_report(
+    canonical: npt.NDArray[np.float64], names: list[str], fs: int = CANONICAL_FS
+) -> dict[str, list[float]]:
+    """Per lead, the durations (ms) of the internal dropouts ``to_signal`` bridged.
+
+    ``to_signal``'s own return shape is fixed and app-EKG parses it strictly, so this is a
+    side channel: a caller such as api-EKG's diagnostics can store it without the app ever
+    seeing it. Only leads with at least one bridged hole are present.
+    """
+    report = {}
+    for index, name in enumerate(names):
+        holes = bridged_holes(canonical[index], fs)
+        if holes:
+            report[name] = holes
+    return report
 
 
 def observation_id(label: str) -> str:
@@ -242,9 +345,8 @@ def to_analysis(
 
     signal = None
     if result.get("source_csv"):
-        canonical, names = load_canonical_csv(result["source_csv"])
         layout = (result.get("digitization") or {}).get("lead_layout", "")
-        signal = to_signal(canonical, names, fs, layout)
+        signal = signal_from_csv(result["source_csv"], layout, fs)
 
     return {
         "studyId": study_id,

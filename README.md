@@ -283,13 +283,27 @@ analysis = contract.to_analysis(results[0], study_id="study-abc", completed_at=t
 Three conversions it performs, each one a way to put a plausible lie on a screen if skipped:
 
 - **Units.** The digitizer writes microvolts; `EcgSignal` is millivolts.
-- **Gaps stay gaps.** A lead becomes a list of continuous segments stamped with the second
-  each begins, never a padded array. On a 3×4 print a grid lead exists for 2.5 of the 10
-  seconds, and the app's signal model is built so that drawing a line across the other 7.5
-  takes deliberate effort.
+- **Gaps stay gaps -- dropouts don't.** A lead becomes a list of continuous segments
+  stamped with the second each begins, never a padded array. On a 3×4 print a grid lead
+  exists for 2.5 of the 10 seconds, and the app's signal model is built so that drawing a
+  line across the other 7.5 takes deliberate effort. Within a printed stretch, though, the
+  digitizer sometimes drops the trace for a handful of milliseconds under a label or a bold
+  grid line; `contract.lead_segments` bridges an internal NaN run of at most
+  `MAX_BRIDGED_GAP_SECONDS` (0.04 s -- one small grid square at 25 mm/s, shorter than any
+  QRS complex) by linear interpolation and leaves every longer hole split, so a real
+  never-recorded stretch is never quietly filled. What was bridged is reported separately,
+  per lead, by `contract.signal_bridging_report`, so a caller such as api-EKG's diagnostics
+  can keep the counts without the app ever seeing them (`EcgSignal`'s shape does not grow
+  a field for this).
 - **Right-sided leads get their names back.** The digitizer identifies leads by position, so
   a right-sided print's V4R/V5R/V6R land in the V4/V5/V6 slots; on that layout they are
   relabelled rather than shown as left-sided leads.
+
+`contract.signal_from_csv(csv_path, lead_layout="", fs=CANONICAL_FS)` is the entry point for
+the trace alone, applying the same three conversions without running interpretation. Call it
+right after digitization -- to show the trace to a user while the interpretation stage is
+still running, say -- instead of reaching into `to_signal` and the digitizer's CSV format
+directly; `to_analysis` calls it internally for the `signal` field above.
 
 Each observation also carries `aboveThreshold`. When a per-class threshold applied to the
 result -- explicit or the default one described above under "Scores are rankings, not
@@ -338,6 +352,26 @@ argument construction that the digitizer's CLI is picky about. Two cases worth k
 `test_zscore_is_unit_invariant` is the regression guard for the µV/mV mismatch (see
 above), and `test_input_and_output_are_passed_as_positional_overrides` pins the fact
 that the digitizer takes overrides positionally, a `--overrides` flag makes it exit 2.
+
+### Integration check
+
+```bash
+python scripts/integration_check.py                    # run + compare
+python scripts/integration_check.py --update-reference  # regenerate the stored reference
+```
+
+Deliberately **not** part of `unittest discover -s tests`: it shells out to the real
+digitizer over `tests/integration/images/normal.png` and needs the checkout and its model
+weights, about two minutes of CPU. Run it by hand after touching `patches/`, `configs/`, or
+updating the digitizer checkout -- the synthetic-array suite above cannot see a regression
+that only shows up when the real segmentation network reads a real scan differently than
+before. It compares the fresh canonical CSV against a stored reference
+(`tests/integration/expected/`) on the layout name, the set of leads carrying signal, each
+lead's coverage (within 0.02), and each lead's Pearson correlation over the overlapping
+samples (at least 0.99) -- tolerances rather than exact equality, because a rerun of the
+identical image is a floating-point pipeline and can differ in the last bit. Prints a table
+and exits non-zero on any mismatch. See `tests/integration/README.md` for where the fixture
+image comes from and when to regenerate the reference.
 
 ## Layout
 
