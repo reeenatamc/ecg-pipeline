@@ -39,6 +39,7 @@ import numpy as np
 import numpy.typing as npt
 
 from ecg_pipeline.interpret.waveform import CANONICAL_FS, load_canonical_csv
+from ecg_pipeline.label_categories import DEFAULT_CATEGORY, LABEL_CATEGORIES
 
 MICROVOLTS_TO_MILLIVOLTS = 1e-3
 
@@ -201,6 +202,18 @@ def observation_id(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
 
 
+def observation_category(label: str) -> str:
+    """The clinical category a model label falls under, for the app to group by.
+
+    Looked up in ``LABEL_CATEGORIES`` (generated from ``docs/etiquetas_es_borrador.csv``
+    by ``scripts/generate_label_categories.py``). A label the model emits that the CSV
+    does not cover -- a class added upstream after the draft, say -- is not an error here:
+    it falls back to ``DEFAULT_CATEGORY`` rather than breaking the whole response over one
+    unclassified finding.
+    """
+    return LABEL_CATEGORIES.get(label, DEFAULT_CATEGORY)
+
+
 def observed_leads(result: dict[str, Any]) -> list[str]:
     """Which leads the reading actually rests on, for an observation to point at."""
     if result.get("pathway") == "rhythm":
@@ -215,7 +228,9 @@ def to_observations(result: dict[str, Any]) -> list[dict[str, Any]]:
 
     Labels pass through as the model produced them. Rewriting ``SINUS RHYTHM`` into a
     phrase for a patient to read is a clinical and product decision, and one taken with a
-    cardiologist -- not something to improvise in a serialiser.
+    cardiologist -- not something to improvise in a serialiser. Each observation also
+    carries ``category``, the clinical grouping (``ritmo``, ``conduccion``, ...) the app
+    uses to group findings -- see ``observation_category``.
 
     The whole ranking is emitted, not a top slice: the contract is explicit that this is a
     ranking rather than a verdict, and where to cut it is the interface's call. When
@@ -237,6 +252,7 @@ def to_observations(result: dict[str, Any]) -> list[dict[str, Any]]:
         return {
             "id": observation_id(row["label"]),
             "label": row["label"],
+            "category": observation_category(row["label"]),
             "leads": leads,
             "confidence": row["prob"],
             "needsReview": True,

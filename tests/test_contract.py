@@ -19,6 +19,7 @@ from ecg_pipeline.contract import (
     bridged_holes,
     failure_reason,
     lead_segments,
+    observation_category,
     observation_id,
     observed_leads,
     signal_bridging_report,
@@ -28,6 +29,20 @@ from ecg_pipeline.contract import (
     to_signal,
 )
 from ecg_pipeline.interpret.waveform import CANONICAL_LEADS
+from ecg_pipeline.label_categories import DEFAULT_CATEGORY, LABEL_CATEGORIES
+
+VALID_CATEGORIES = {
+    "ritmo",
+    "conduccion",
+    "repolarizacion",
+    "isquemia_infarto",
+    "marcapasos",
+    "eje",
+    "hipertrofia",
+    "tecnico",
+    "resumen",
+    "otro",
+}
 
 FS = 500
 
@@ -235,6 +250,21 @@ class TestObservations(unittest.TestCase):
     def test_ids_survive_punctuation(self):
         self.assertEqual(observation_id("1st DEGREE AV BLOCK"), "1st-degree-av-block")
 
+    def test_a_known_label_carries_its_category(self):
+        result = {"pathway": "rhythm", "rhythm_leads": ["II"], "topk": [{"label": "ATRIAL FIBRILLATION", "prob": 0.9}]}
+
+        observations = to_observations(result)
+
+        self.assertEqual(observations[0]["category"], "ritmo")
+
+    def test_a_label_the_csv_does_not_cover_falls_back_to_otro(self):
+        result = {"pathway": "rhythm", "rhythm_leads": ["II"], "topk": [{"label": "MADE UP LABEL", "prob": 0.9}]}
+
+        observations = to_observations(result)
+
+        self.assertEqual(observations[0]["category"], DEFAULT_CATEGORY)
+        self.assertEqual(observation_category("MADE UP LABEL"), "otro")
+
     def test_no_flagged_key_means_ranking_only(self):
         # interpret_csv sets threshold_source but not "flagged" only when it resolved
         # neither an explicit nor a default threshold -- see interpret_ecg.default_thresholds.
@@ -309,6 +339,16 @@ class TestObservations(unittest.TestCase):
 
         self.assertEqual([o["label"] for o in observations], ["A", "Z"])
         self.assertTrue(all(o["aboveThreshold"] for o in observations))
+
+
+class TestLabelCategories(unittest.TestCase):
+    def test_every_label_has_one_of_the_ten_fixed_categories(self):
+        self.assertEqual(len(LABEL_CATEGORIES), 150)
+        for label, category in LABEL_CATEGORIES.items():
+            self.assertIn(category, VALID_CATEGORIES, f"{label!r} has an invalid category {category!r}")
+
+    def test_default_category_is_one_of_the_fixed_slugs(self):
+        self.assertIn(DEFAULT_CATEGORY, VALID_CATEGORIES)
 
 
 class TestFailureReason(unittest.TestCase):
