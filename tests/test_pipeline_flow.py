@@ -27,6 +27,26 @@ from ecg_pipeline.interpret.waveform import CANONICAL_LEADS
 
 N = 500
 
+# A small stand-in for the digitizer's own lead-layout templates, covering every layout
+# name this file uses. Patched into every ``PipelineRunCase`` test (see ``setUp`` below) so
+# the gate-4/5 logic in ``pipeline.py`` never depends on a real Open-ECG-Digitizer checkout
+# being present -- these tests run on synthetic arrays only, per the README's promise.
+# Real-template parsing (nested grids, "-" markers, "Any" wildcards) is covered separately
+# in tests/test_layout_templates.py against an actual excerpt of upstream's file.
+TEST_LAYOUTS = {
+    "cabrera_6x1_limb": {"leads": ["aVL", "I", "-aVR", "II", "aVF", "III"], "rhythm_leads": []},
+    "standard_3x1": {"leads": ["I", "II", "III"], "rhythm_leads": []},
+    "standard_3x4_with_r1": {
+        "leads": [["I", "aVR", "V1", "V4"], ["II", "aVL", "V2", "V5"], ["III", "aVF", "V3", "V6"]],
+        "rhythm_leads": ["Any"],
+    },
+    "standard_3x4_with_r3": {
+        "leads": [["I", "aVR", "V1", "V4"], ["II", "aVL", "V2", "V5"], ["III", "aVF", "V3", "V6"]],
+        "rhythm_leads": ["Any", "Any", "Any"],
+    },
+    "standard_12x1": {"leads": list(CANONICAL_LEADS), "rhythm_leads": []},
+}
+
 
 def write_canonical_csv(path: Path, coverage: dict[str, float]) -> None:
     """A canonical CSV where each lead is valid for the given fraction of the record."""
@@ -52,6 +72,7 @@ class PipelineRunCase(unittest.TestCase):
     def setUp(self) -> None:
         self.images = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.output = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(mock.patch.object(pipeline, "_layout_definitions", return_value=TEST_LAYOUTS))
 
     def add_image(self, name: str) -> None:
         # Wide enough that 'auto' leaves it alone; one pixel row tall so that encoding it is
@@ -93,8 +114,11 @@ class TestDigitizeOnlyGates(PipelineRunCase):
 
     def test_a_clean_digitization_is_not_flagged(self):
         self.add_image("ecg")
+        # standard_3x4_with_r3's realistic shape: every grid lead has some signal (its ~2.5s
+        # column), and the three wildcard rhythm leads landed on the conventional strips.
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
 
-        results = self.run_pipeline({"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "standard_3x4_with_r3"})
+        results = self.run_pipeline({"ecg": coverage}, {"ecg": "standard_3x4_with_r3"})
 
         self.assertFalse(results[0]["degraded"])
         self.assertEqual(results[0]["warnings"], [])
@@ -125,6 +149,91 @@ class TestDigitizeOnlyGates(PipelineRunCase):
 
         self.assertEqual(finished.returncode, 0, finished.stderr)
         self.assertEqual(finished.stdout.strip(), "False")
+
+
+class TestLayoutTemplateGates(PipelineRunCase):
+    """Gate 4 (fewer leads than the matched template defines) and gate 5 (a wildcard
+    rhythm strip landing on an unconventional lead). Both need the layout name together
+    with the signal, which coverage-only gate 3 in ``assess_quality`` never sees.
+
+    ``pipeline._layout_definitions`` is mocked (with ``TEST_LAYOUTS``, in ``setUp`` above)
+    rather than pointed at a real checkout: the parsing itself (nested grids, "-" markers,
+    "Any" wildcards) is covered in tests/test_layout_templates.py against a real excerpt,
+    so these only need to know the gates react correctly to a given template shape.
+    """
+
+    def test_fewer_leads_than_the_template_defines_degrades(self):
+        # case_10: cabrera_6x1_limb defines 6 leads, only 5 came back with signal.
+        self.add_image("case_10")
+        coverage = {l: 1.0 for l in ("I", "II", "III", "aVR", "aVL")}  # aVF missing
+
+        results = self.run_pipeline({"case_10": coverage}, {"case_10": "cabrera_6x1_limb"})
+
+        self.assertTrue(results[0]["degraded"])
+        self.assertTrue(any("defines 6 lead" in w and "missing aVF" in w for w in results[0]["warnings"]))
+
+    def test_the_full_template_does_not_degrade(self):
+        # standard_3x1 defines only 3 leads and all 3 came back with signal; the pipeline
+        # still warns "3 of 12" (gate 3, unrelated to this one) but must not degrade for it,
+        # and gate 4 itself must add nothing since nothing is missing from the template.
+        self.add_image("infarct")
+
+        results = self.run_pipeline({"infarct": {l: 1.0 for l in ("I", "II", "III")}}, {"infarct": "standard_3x1"})
+
+        self.assertFalse(results[0]["degraded"])
+        self.assertFalse(any("defines 3 lead" in w for w in results[0]["warnings"]))
+
+    def test_a_full_twelve_lead_match_stays_clean(self):
+        # "12 of 12" means every lead carries some signal, not that every lead is full
+        # length -- on a real 3x4 print only the wildcard strips (here landing on the
+        # conventional II/V1/V5) ever reach full length; the other 9 are ~2.5s columns.
+        self.add_image("normal")
+        coverage = {l: 0.25 for l in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
+
+        results = self.run_pipeline({"normal": coverage}, {"normal": "standard_3x4_with_r3"})
+
+        self.assertFalse(results[0]["degraded"])
+        self.assertEqual(results[0]["warnings"], [])
+
+    def test_an_unavailable_layout_definition_warns_without_degrading(self):
+        self.add_image("ecg")
+        coverage = {l: 0.25 for l in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
+
+        with mock.patch.object(pipeline, "_layout_definitions", return_value=None):
+            results = self.run_pipeline({"ecg": coverage}, {"ecg": "standard_3x4_with_r3"})
+
+        self.assertFalse(results[0]["degraded"])
+        self.assertTrue(any("was unavailable" in w for w in results[0]["warnings"]))
+
+    def test_an_unconventional_rhythm_strip_degrades(self):
+        # afib_E000735-like: the wildcard strip on standard_3x4_with_r1 was identified as
+        # aVF instead of the printed II.
+        self.add_image("afib_E000735")
+        coverage = {l: 0.25 for l in CANONICAL_LEADS} | {"aVF": 1.0}
+
+        results = self.run_pipeline({"afib_E000735": coverage}, {"afib_E000735": "standard_3x4_with_r1"})
+
+        self.assertTrue(results[0]["degraded"])
+        self.assertTrue(any("unverified" in w and "aVF" in w for w in results[0]["warnings"]))
+
+    def test_a_conventional_rhythm_strip_does_not_degrade(self):
+        self.add_image("afib_E000742")
+        coverage = {l: 0.25 for l in CANONICAL_LEADS} | {"II": 1.0}
+
+        results = self.run_pipeline({"afib_E000742": coverage}, {"afib_E000742": "standard_3x4_with_r1"})
+
+        self.assertFalse(results[0]["degraded"])
+        self.assertEqual(results[0]["warnings"], [])
+
+    def test_a_12x1_layout_never_triggers_the_rhythm_strip_check(self):
+        # Every lead is full length and there is no wildcard rhythm lead at all, so gate 5
+        # must not fire just because most of them are not II/V1/V5.
+        self.add_image("ecg")
+
+        results = self.run_pipeline({"ecg": {l: 1.0 for l in CANONICAL_LEADS}}, {"ecg": "standard_12x1"})
+
+        self.assertFalse(results[0]["degraded"])
+        self.assertEqual(results[0]["warnings"], [])
 
 
 class TestMissingRecords(PipelineRunCase):

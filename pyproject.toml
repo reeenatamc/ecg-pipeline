@@ -14,6 +14,8 @@ dependencies = [
     "scipy>=1.12,<2",
     "pillow>=10.2",
     "matplotlib>=3.8",
+    # Reads the digitizer's lead-layout templates as data; see requirements.txt.
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
