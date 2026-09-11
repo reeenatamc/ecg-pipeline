@@ -52,20 +52,12 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
-# net1d.py is vendored next to this file (from ECGFounder, MIT). Adding this directory
-# to sys.path keeps it importable both as a script and as a module.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from net1d import Net1D  # noqa: E402
-
-# Re-exported deliberately: these were defined here before ``waveform.py` existed, and callers
-# (including the test suite) import them from this module.
-from ecg_pipeline.interpret import PATHWAYS  # noqa: E402
-from ecg_pipeline.interpret.representative_beat import (  # noqa: E402
-    representative_beat,
-    residual_desync_ms,
-    tile_to_length,
-)
-from ecg_pipeline.interpret.waveform import (  # noqa: E402
+# Re-exported deliberately: these were defined here before ``waveform.py`` existed, and
+# callers (including the test suite) import them from this module.
+from ecg_pipeline.interpret import PATHWAYS
+from ecg_pipeline.interpret.net1d import Net1D  # vendored from ECGFounder (MIT); see NOTICE
+from ecg_pipeline.interpret.representative_beat import representative_beat, residual_desync_ms, tile_to_length
+from ecg_pipeline.interpret.waveform import (
     CANONICAL_FS,
     CANONICAL_LEADS,
     PREFERRED_RHYTHM_LEADS,
@@ -191,7 +183,14 @@ def build_12lead_montage(
 
 def _build_model(kwargs: dict[str, Any], ckpt_path: str, device: str) -> Net1D:
     model = Net1D(**kwargs)
-    checkpoint = torch.load(ckpt_path, map_location=device)
+    # ``weights_only=False`` is explicit rather than left to the default, because the default
+    # flips to True in torch 2.6 and these checkpoints do not load under it: alongside the
+    # state_dict they carry the optimizer and scheduler state and a ``val_auroc`` stored as a
+    # numpy scalar, which the restricted unpickler rejects. The allowlist that would admit it
+    # (``torch.serialization.add_safe_globals``) only exists from 2.4. This is a full pickle
+    # of a file downloaded from HuggingFace, so keep ``download_weights.sh`` pointed at the
+    # published checkpoints and nowhere else.
+    checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
     state_dict = checkpoint["state_dict"] if isinstance(checkpoint, dict) and "state_dict" in checkpoint else checkpoint
     log = model.load_state_dict(state_dict, strict=False)
     if log.missing_keys or log.unexpected_keys:

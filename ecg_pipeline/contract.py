@@ -130,51 +130,54 @@ def to_observations(result: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def trace_incomplete(quality: dict[str, Any] | None) -> bool:
+    """Did the digitization come back too fragmented to read, by ``assess_quality``'s rules?
+
+    Mirrors the two conditions under which that function degrades a record: no lead
+    carries any signal, or the pathway needs a full-length strip and none was printed. It
+    is read off the fields rather than off ``quality["degraded"]`` because the morphology
+    and 12lead pathways set that flag for reasons of their own that say nothing about the
+    trace.
+    """
+    if not quality:
+        return False
+    if not quality.get("leads_with_signal"):
+        return True
+    return bool(quality.get("needs_full_length")) and not quality.get("full_length_leads")
+
+
 def failure_reason(result: dict[str, Any]) -> str | None:
     """Map a pipeline failure onto the contract's closed set of causes.
 
     ``grid-not-detected`` is never produced: when the digitizer cannot find the grid it
     raises per-image and writes nothing at all, which reaches us as an image that produced
     no output and is indistinguishable from any other unreadable one.
+
+    ``trace-incomplete`` is the case the contract lacked for a long time: the image was
+    read and a layout was found, but the trace came back too fragmented to interpret. It
+    used to land on ``unexpected``, which told the user something had gone wrong on the
+    server when what had gone wrong was the photograph.
     """
     if not result.get("degraded"):
         return None
     if not result.get("source_csv"):
         return "unreadable-image"
 
-    # Before blaming this service, ask whether the scan yielded anything at all. A run
-    # that recovered no lead failed on the image, and the record says so on its own,
-    # whether or not interpretation also raised: every lead sits at zero coverage.
-    #
-    # Measured on a blank image pushed through the whole pipeline. The digitizer wrote a
-    # CSV, interpretation raised "No usable lead found in canonical CSV", and this landed
-    # on server-error. Nothing here was broken. The cause reaches a screen as words, and
-    # "something went wrong on our side" sends the user to wait for a fix instead of to
-    # take the photograph again -- the one thing that would have worked.
-    quality = result.get("signal_quality") or {}
-    if quality.get("leads_with_signal") == []:
-        return "unreadable-image"
-
-    if "error" in result:
+    # A run that recovered no lead at all failed on the image, not on this service,
+    # even when interpretation also raised -- and on an empty trace it always does,
+    # with "No usable lead found in canonical CSV". Checking the error first put a
+    # blank photograph on server-error, which sends the user to wait for a fix
+    # instead of to take the picture again. Measured on a blank image pushed through
+    # the whole pipeline. With no signal the error is a consequence, not a fault, so
+    # it is skipped and the checks below name the cause.
+    no_signal = (result.get("signal_quality") or {}).get("leads_with_signal") == []
+    if "error" in result and not no_signal:
         return "server-error"
     layout = (result.get("digitization") or {}).get("lead_layout")
     if layout == "Unknown layout":
         return "unsupported-mount"
-
-    # Read after the layout, because an unidentified layout explains this one too: with
-    # the wrong grid, a rhythm strip that is on the paper is not where the digitizer
-    # looked for it. Named only when the layout was identified, so it means what it says.
-    #
-    # This is the cause a plain 3x4 print produces. Every lead is printed for 2.5 s, no
-    # lead runs the full ten, and the rhythm pathway has nothing continuous to read. It is
-    # the pipeline working, not failing -- but until this existed it came out as
-    # "unexpected", which reaches a screen as "something went wrong, try again". Retrying
-    # a sheet that carries no full-length lead cannot ever succeed, so that message sent
-    # the user to press a button forever. Measured on a 1800x649 print: layout
-    # standard_3x4 identified cleanly, 12 of 12 leads recovered, all twelve at 25%.
-    if quality.get("needs_full_length") and quality.get("full_length_leads") == []:
-        return "no-full-length-lead"
-
+    if trace_incomplete(result.get("signal_quality")):
+        return "trace-incomplete"
     return "unexpected"
 
 

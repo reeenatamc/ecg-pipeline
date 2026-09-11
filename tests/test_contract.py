@@ -153,20 +153,48 @@ class TestFailureReason(unittest.TestCase):
 
         self.assertEqual(failure_reason(result), "server-error")
 
-    def test_a_scan_that_yielded_no_signal_is_unreadable_not_a_server_error(self):
+    def test_a_fragmented_trace_with_a_known_layout_is_trace_incomplete(self):
+        # The layout matched and the CSV exists, but no lead was printed at full length:
+        # the photograph is the problem, and the user should be told to retake it rather
+        # than that the server failed.
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "digitization": {"lead_layout": "standard_3x4"},
+            "signal_quality": {
+                "leads_with_signal": ["I", "II"],
+                "full_length_leads": [],
+                "needs_full_length": True,
+                "degraded": True,
+            },
+        }
+
+        self.assertEqual(failure_reason(result), "trace-incomplete")
+
+    def test_no_signal_at_all_is_trace_incomplete(self):
+        result = {
+            "degraded": True,
+            "source_csv": "x.csv",
+            "digitization": {"lead_layout": "standard_3x4"},
+            "signal_quality": {"leads_with_signal": [], "full_length_leads": [], "needs_full_length": True},
+        }
+
+        self.assertEqual(failure_reason(result), "trace-incomplete")
+
+    def test_a_scan_that_yielded_no_signal_is_not_a_server_error(self):
         # Measured on a blank image pushed through the whole pipeline. The digitizer
         # wrote a CSV, interpretation raised "No usable lead found in canonical CSV",
         # and the error branch blamed the service. Nothing was broken here: the image
-        # had nothing on it. The record says so -- every lead at zero coverage -- before
-        # any exception is considered.
+        # had nothing on it, and the record says so -- every lead at zero coverage --
+        # before any exception is considered.
         result = {
             "degraded": True,
             "source_csv": "x.csv",
             "error": "ValueError: No usable lead found in canonical CSV.",
-            "signal_quality": {"leads_with_signal": []},
+            "signal_quality": {"leads_with_signal": [], "full_length_leads": [], "needs_full_length": True},
         }
 
-        self.assertEqual(failure_reason(result), "unreadable-image")
+        self.assertEqual(failure_reason(result), "trace-incomplete")
 
     def test_a_crash_with_signal_present_is_still_a_server_error(self):
         # The other half. Blaming the image for every failure would be the same mistake
@@ -180,58 +208,22 @@ class TestFailureReason(unittest.TestCase):
 
         self.assertEqual(failure_reason(result), "server-error")
 
-    def test_a_print_with_no_full_length_lead_says_so(self):
-        # A plain 3x4 print: every lead runs 2.5 s and none runs the full ten. The
-        # pipeline read it perfectly -- layout identified, all twelve leads recovered --
-        # and still cannot report a rhythm. Before this cause existed it came out as
-        # "unexpected", which reaches a screen as "something went wrong, try again", and
-        # retrying a sheet that has no rhythm strip cannot ever succeed.
+    def test_a_pathway_that_degrades_itself_is_not_trace_incomplete(self):
+        # morphology and 12lead set degraded on their own quality dict for reasons that say
+        # nothing about the trace; that must not be reported as a bad photograph.
         result = {
             "degraded": True,
             "source_csv": "x.csv",
             "digitization": {"lead_layout": "standard_3x4"},
             "signal_quality": {
-                "leads_with_signal": list(CANONICAL_LEADS),
-                "full_length_leads": [],
-                "needs_full_length": True,
-            },
-        }
-
-        self.assertEqual(failure_reason(result), "no-full-length-lead")
-
-    def test_a_pathway_that_needs_no_full_length_lead_does_not_raise_it(self):
-        # The morphology pathway reads a representative beat and never needs a continuous
-        # strip, so a 3x4 is not short of anything for it. Reporting a missing rhythm
-        # strip there would send the user to find a sheet they do not need.
-        result = {
-            "degraded": True,
-            "source_csv": "x.csv",
-            "digitization": {"lead_layout": "standard_3x4"},
-            "signal_quality": {
-                "leads_with_signal": ["II"],
-                "full_length_leads": [],
+                "leads_with_signal": ["I", "II", "V1"],
+                "full_length_leads": ["II"],
                 "needs_full_length": False,
+                "degraded": True,
             },
         }
 
         self.assertEqual(failure_reason(result), "unexpected")
-
-    def test_an_unidentified_layout_wins_over_a_missing_strip(self):
-        # With the wrong grid, a rhythm strip that is on the paper is not where the
-        # digitizer looked. Naming the strip would describe a symptom and send the user to
-        # find a different sheet, when the sheet was never the problem.
-        result = {
-            "degraded": True,
-            "source_csv": "x.csv",
-            "digitization": {"lead_layout": "Unknown layout"},
-            "signal_quality": {
-                "leads_with_signal": ["II"],
-                "full_length_leads": [],
-                "needs_full_length": True,
-            },
-        }
-
-        self.assertEqual(failure_reason(result), "unsupported-mount")
 
 
 class TestToAnalysis(unittest.TestCase):

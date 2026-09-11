@@ -257,16 +257,15 @@ Se pasan con `--thresholds umbrales.json` (un `{etiqueta: umbral}`) o un `--thre
 
 ## 5. Tres cosas abiertas que deberías saber
 
-**1. El filtrado de ECGFounder no está implementado.** El `NOTICE` afirma que
-«upstream requiere que se siga el preprocesado de su `dataset.py` (filtrado, normalización
-z-score); `interpret_ecg.py` lo implementa». **Solo está el z-score.** Busqué
-`butter|bandpass|filtfilt|sosfilt|notch` en todo el módulo de interpretación: no hay
-ninguno.
-
-Puede que dé igual —una señal digitalizada de papel ya viene limitada en banda por la
-impresión y el escaneo, y no arrastra red eléctrica ni deriva de línea base como un
-registro crudo— pero **nadie lo ha medido**. O se implementa el filtro, o se corrige el
-NOTICE. Ahora mismo el documento promete más de lo que el código hace.
+**1. El filtro de ECGFounder: upstream tiene dos caminos y aquí se sigue el de
+evaluación.** Su README dice «seguir estrictamente `dataset.py`, incluido el filtrado».
+Leído con cuidado: `ptbxl_eval.py`, que es la validación de 150 clases con el checkpoint
+preentrenado (nuestro uso), aplica solo un z-score global y ningún filtro. `dataset.py`,
+que son los datasets de fine-tuning, aplica antes `filter_bandpass`: notch de 50 Hz (Q=30)
+y Butterworth de orden 4 pasabanda 0,67 a 40 Hz. `waveform.zscore` sigue el camino de
+evaluación. Si el pasabanda ayuda o estorba sobre un ECG digitalizado de papel no se ha
+medido; `scripts/derive_thresholds_colab.ipynb` corre las dos variantes sobre PTB-XL y
+deja la comparación en una tabla.
 
 **2. No hay datos de validación.** Nada de esto está validado contra ECG con verdad de
 referencia. Los números de arriba son de ejemplos sueltos. Es el bloqueo real del proyecto,

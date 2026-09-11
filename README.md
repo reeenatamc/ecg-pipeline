@@ -116,7 +116,11 @@ or to a global fiducial from the 12-lead vector magnitude, is the known next imp
 present/absent decisions, `ABNORMAL ECG` can score high alongside `NORMAL ECG`.
 ECGFounder binarizes with per-class thresholds derived on PTB-XL. Pass `--thresholds`
 (a `{label: threshold}` JSON) or `--threshold` to get a flagged list; without one you get
-a ranking only.
+a ranking only. Upstream does not publish the thresholds, it computes them at evaluation
+time; `scripts/derive_thresholds_colab.ipynb` reproduces that computation on a Colab GPU
+(about half an hour) and also measures two things this README leaves open: whether the
+bandpass upstream uses in fine-tuning helps the pretrained model, and how much the 1-lead
+checkpoint, built for lead I, loses on the II/V1/V5 strips the `rhythm` pathway feeds it.
 
 ## Image preprocessing
 
@@ -254,10 +258,11 @@ Two things it deliberately does not do:
   patient to read). Rewriting them is a clinical and product decision.
 
 A `degraded` result is emitted as `status: "failed"`, not as observations. The contract has
-`ready` and `failed` and nothing in between, and the distinction this pipeline exists to
-draw (a reading versus a reading that must not be trusted) currently has to collapse into
-`failed`. **That is the one field the contract is missing**, and worth raising before the
-backend closes: `AnalysisFailureReason` has no case for "digitized, but too poor to read".
+`ready` and `failed` and nothing in between, so a reading that must not be trusted goes
+over as `failed` with a cause. "Digitized, but too poor to read" is `trace-incomplete`:
+the layout matched and a CSV exists, but no lead carries signal or none was printed at
+full length. It used to collapse into `unexpected`, which told the user the server had
+failed when the photograph had.
 
 ## Tests
 

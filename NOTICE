@@ -61,9 +61,20 @@ The `.pth` checkpoints are downloaded at setup time and are not stored in git.
 MIT is permissive: bundling, modification, and commercial use are allowed provided the
 copyright notice and permission notice are retained. Retain them.
 
-Upstream requires that the preprocessing in its `dataset.py` (filtering, z-score
-normalization) be followed when using the pretrained weights; `interpret_ecg.py`
-implements this.
+Upstream's README says to follow the preprocessing in its `dataset.py`, "including
+filtering". Read precisely, upstream has two preprocessing paths and they differ:
+
+  * `ptbxl_eval.py`, the 150-class validation of the pretrained checkpoints, which is
+    what this repository uses them for, applies a global z-score
+    (`(x - mean) / (std + 1e-8)` over the whole array) and nothing else. No filter.
+  * `dataset.py`, the four fine-tuning datasets, first applies `util.filter_bandpass`:
+    a 50 Hz notch (Q=30) and a 4th-order Butterworth bandpass at 0.67-40 Hz, then the
+    same z-score.
+
+`waveform.zscore` is the z-score, applied as `ptbxl_eval.py` applies it. No filter is
+applied, matching the evaluation path rather than the fine-tuning one. Whether the
+bandpass helps or hurts on a digitized paper ECG is measurable and has not been
+measured; `scripts/derive_thresholds_colab.ipynb` runs both variants on PTB-XL.
 
 
 Everything else in this repository is original work; see LICENSE.
