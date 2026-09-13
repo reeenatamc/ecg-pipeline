@@ -44,17 +44,30 @@ It can share this virtualenv or use its own, if separate, pass the interpreter t
 
 ### Speed settings
 
-Three environment variables, all optional. Measurements and the reasoning behind each
+Environment variables, all optional. Measurements and the reasoning behind each
 default are in [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md).
 
 | variable | default | what it does |
 |---|---|---|
+| `ECG_DEVICE` | `cpu` | `cuda` (or `cuda:N`) runs the whole analysis on the GPU: both digitizer networks, in either mode, and ECGFounder. `--device` and `pipeline.run(device=...)` override it. |
+| `ECG_DIGITIZER_DEBUG_PNG` | `1` | `0` stops the digitizer from drawing its debug PNG next to each CSV (`DATA.save_mode: timeseries_only`), about 6 s per study. The CSV and the metadata are unchanged. |
 | `ECG_DIGITIZER_MODE` | `persistent` | `persistent` keeps one digitizer process (`src.serve`, from `patches/0004`) alive with its models loaded across studies; `subprocess` launches `python -m src.digitize` per call. Both are separate processes, so the licensing boundary is the same. |
 | `ECG_DIGITIZER_RESAMPLE_SIZE` | `MODEL.KWARGS.resample_size` in `configs/digitizer_cpu.yml` | Long side, in pixels, the segmentation works at. Larger images are downscaled (bilinear, antialiased) to it; smaller ones are left alone. |
 | `ECG_TORCH_THREADS` | CPUs available, capped at 8 | Intra-op threads for torch, in the digitizer process and for ECGFounder. |
 
 The persistent digitizer holds its models in memory between studies. Where that resident
 memory is not affordable, use `ECG_DIGITIZER_MODE=subprocess`.
+
+On the GPU there is no second config to keep in sync. With `ECG_DEVICE=cuda` the pipeline
+writes a copy of `configs/digitizer_cpu.yml` (or whatever `--config` names) under the
+system temp directory with `MODEL.KWARGS.device` and
+`MODEL.KWARGS.config.LAYOUT_IDENTIFIER.KWARGS.device` set to the GPU, and points the
+digitizer at it; with `cpu` the checked-in file is used untouched. A CUDA request is checked
+before the first image is read: if torch cannot see a GPU (CPU-only build, no driver, no GPU
+attached), `pipeline.run` raises `devices.DeviceUnavailable` and the CLI exits 1 with the
+cause. The digitizer and the pipeline must share an interpreter whose torch has CUDA. On a
+Colab T4 a study took about 17 s warm and 26 s cold against 95 s on that machine's CPU, with
+identical output on 24 of 24 validation images (see docs/RENDIMIENTO.md, section 7).
 
 ## Usage
 

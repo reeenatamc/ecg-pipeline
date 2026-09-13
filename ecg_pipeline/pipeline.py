@@ -19,7 +19,7 @@ from typing import Any
 # code); see requirements.txt for why it is a direct dependency here.
 import yaml
 
-from ecg_pipeline import digitizer, preprocess
+from ecg_pipeline import devices, digitizer, preprocess
 from ecg_pipeline.digitizer import CANONICAL_SUFFIX
 from ecg_pipeline.interpret.waveform import CONVENTIONAL_STRIP_LEADS
 
@@ -352,7 +352,7 @@ def run(
     pathway: str = "rhythm",
     lead: str = "II",
     top_k: int = 10,
-    device: str = "cpu",
+    device: str | None = None,
     thresholds: dict[str, float] | None = None,
     flat_threshold: float | None = None,
     max_matching_cost: float | None = None,
@@ -370,7 +370,12 @@ def run(
     ``preprocessing`` (what was done to the image first), ``warnings``, and ``degraded``.
     A confident-looking probability on an ECG whose layout was never identified is the
     failure mode this guards against: read ``degraded`` before reading ``topk``.
+
+    ``device`` (default ``$ECG_DEVICE``, else ``cpu``) runs both stages, the digitizer and
+    ECGFounder, on the same device. A CUDA request is checked here, before any image is
+    touched, so a machine without a usable GPU fails at once instead of mid-batch.
     """
+    device = devices.require_device(device)
     # The digitizer reads a directory, so the upscaled images are staged into a scratch
     # one. They are inputs, not results: keeping them would leave a second copy of every
     # ECG image on disk next to the outputs.
@@ -387,6 +392,7 @@ def run(
             config=config,
             overrides=digitizer.lead_layout_override(lead_layout) if lead_layout else None,
             quiet=quiet,
+            device=device,
         )
 
     # The digitizer no longer empties the output directory, so what it wrote has to be told
