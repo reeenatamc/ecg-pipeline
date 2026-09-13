@@ -1,0 +1,173 @@
+--- /dev/null
++++ b/src/serve.py
+@@ -0,0 +1,170 @@
++"""Persistent digitizer: load the models once, then digitize one image directory per request.
++
++``python -m src.digitize`` imports torch and loads both U-Nets on every invocation, which
++on a laptop CPU is about five seconds before the first image is touched. A caller that
++digitizes studies one after another (a queue worker) pays that for every study. This
++entry point keeps the loaded InferenceWrapper alive between requests and otherwise does
++exactly what ``src.digitize.main`` does: same config, same override rules, same
++per-image ``process_one_file`` (including its per-image seed), same outputs.
++
++Protocol, one JSON object per line:
++
++    stdout, once, after loading:  {"event": "ready", "load_seconds": 1.9}
++    stdin, one per request:       {"id": 1, "overrides": {"DATA.images_path": "/in/", ...}}
++    stdout, one per request:      {"id": 1, "ok": true, "seconds": 41.2, "log": "..."}
++                                  {"id": 1, "ok": false, "error": "...", "log": "..."}
++
++Anything the digitizer prints while working is captured into ``log`` so stdout carries
++only protocol lines. The process exits when stdin reaches EOF.
++
++    python -m src.serve --config path/to/config.yml
++"""
++
++import argparse
++import contextlib
++import io
++import json
++import sys
++import time
++import traceback
++import warnings
++from typing import Any, TextIO
++
++import yaml
++from yacs.config import CfgNode as CN
++
++from src.config.default import get_cfg
++from src.digitize import clear_and_prepare_output_dir, get_candidate_file_paths, process_one_file
++from src.utils import find_config_path, import_class_from_path
++
++# Model settings that can change between requests without reloading any weights.
++LAYOUT_PATH_KEY = "KWARGS.config.LAYOUT_IDENTIFIER.config_path"
++RESAMPLE_KEY = "KWARGS.resample_size"
++CHEAP_MODEL_KEYS = {LAYOUT_PATH_KEY, RESAMPLE_KEY}
++
++
++def merge_overrides(base: CN, overrides: dict[str, Any]) -> CN:
++    """Apply KEY=VALUE overrides the way ``src.digitize``'s command line does."""
++    cfg = base.clone()
++    kv_list: list[str] = []
++    for key, value in overrides.items():
++        node = cfg
++        parts = key.split(".")
++        exists = True
++        for part in parts[:-1]:
++            if part in node:
++                node = node[part]
++            else:
++                exists = False
++                break
++        if not exists or parts[-1] not in node:
++            warnings.warn(f"Config key '{key}' not found in loaded config. Override skipped.")
++            continue
++        kv_list.extend([key, str(value)])
++    if kv_list:
++        cfg.merge_from_list(kv_list)
++    return cfg
++
++
++def flatten(node: Any, prefix: str = "") -> dict[str, Any]:
++    if isinstance(node, dict):
++        out: dict[str, Any] = {}
++        for key, value in node.items():
++            out.update(flatten(value, f"{prefix}{key}."))
++        return out
++    return {prefix[:-1]: node}
++
++
++class ModelCache:
++    """Holds one InferenceWrapper and rebuilds it only when a request needs different weights."""
++
++    def __init__(self) -> None:
++        self.wrapper: Any = None
++        self.flat: dict[str, Any] = {}
++
++    def get(self, model_cfg: CN) -> Any:
++        flat = flatten(model_cfg)
++        if self.wrapper is not None:
++            changed = {k for k in set(flat) | set(self.flat) if flat.get(k) != self.flat.get(k)}
++            if changed and changed <= CHEAP_MODEL_KEYS:
++                if LAYOUT_PATH_KEY in changed:
++                    with open(model_cfg.KWARGS.config.LAYOUT_IDENTIFIER.config_path, "r") as fh:
++                        self.wrapper.identifier.layouts = yaml.safe_load(fh)
++                if RESAMPLE_KEY in changed:
++                    self.wrapper.resample_size = model_cfg.KWARGS.resample_size
++                changed = set()
++            if not changed:
++                self.flat = flat
++                return self.wrapper
++        wrapper_class = import_class_from_path(model_cfg.class_path)
++        self.wrapper = wrapper_class(**model_cfg.KWARGS)
++        self.flat = flat
++        return self.wrapper
++
++
++def run_request(cache: ModelCache, base_cfg: CN, overrides: dict[str, Any]) -> None:
++    """One ``src.digitize.main`` run, on the already loaded models."""
++    config = merge_overrides(base_cfg, overrides)
++    inference_wrapper = cache.get(config.MODEL)
++    save_mode: str = getattr(config.DATA, "save_mode", "all")
++    file_paths = get_candidate_file_paths(config)
++    include_list = config.DATA.get("path_should_include", [])
++
++    if config.DATA.get("output_path") is not None:
++        clear_and_prepare_output_dir(config)
++
++    for file_path in file_paths:
++        if include_list and not any(include in file_path for include in include_list):
++            continue
++        print(f"Processing file: {file_path}")
++        try:
++            process_one_file(file_path, config, inference_wrapper, save_mode)
++        except Exception as e:
++            print(f"Error processing {file_path}: {e}")
++            continue
++
++
++def send(stream: TextIO, message: dict[str, Any]) -> None:
++    stream.write(json.dumps(message) + "\n")
++    stream.flush()
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Digitize ECGs on request, keeping the models loaded.")
++    parser.add_argument("--config", type=str, required=True, help="Config file name or path.")
++    args = parser.parse_args()
++
++    # stdout is the protocol channel; stray prints outside a request go to stderr instead.
++    protocol = sys.stdout
++    sys.stdout = sys.stderr
++
++    start = time.perf_counter()
++    base_cfg = get_cfg(find_config_path(args.config))
++    cache = ModelCache()
++    cache.get(base_cfg.MODEL)
++    send(protocol, {"event": "ready", "load_seconds": time.perf_counter() - start})
++
++    for line in sys.stdin:
++        line = line.strip()
++        if not line:
++            continue
++        try:
++            request = json.loads(line)
++        except ValueError as exc:
++            send(protocol, {"id": None, "ok": False, "error": f"Malformed request: {exc}", "log": ""})
++            continue
++
++        log = io.StringIO()
++        began = time.perf_counter()
++        try:
++            with contextlib.redirect_stdout(log):
++                run_request(cache, base_cfg, request.get("overrides") or {})
++            reply: dict[str, Any] = {"ok": True}
++        except Exception:
++            reply = {"ok": False, "error": traceback.format_exc()}
++        reply.update(id=request.get("id"), seconds=time.perf_counter() - began, log=log.getvalue())
++        send(protocol, reply)
++
++
++if __name__ == "__main__":
++    main()
