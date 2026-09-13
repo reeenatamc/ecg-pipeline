@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from ecg_pipeline import digitizer, pipeline, preprocess
+from ecg_pipeline import devices, digitizer, pipeline, preprocess
 from ecg_pipeline.interpret import PATHWAYS
 
 
@@ -57,7 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--lead", default="II", help="Lead to use when --pathway 1lead.")
     parser.add_argument("--top-k", type=int, default=10, help="How many diagnoses to report.")
-    parser.add_argument("--device", default="cpu", help="Torch device for interpretation.")
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="Torch device for the digitizer and ECGFounder: cpu, cuda or cuda:N "
+        f"(default: ${devices.ENV_DEVICE}, else cpu).",
+    )
     parser.add_argument("--threshold", type=float, default=None, help="Flat threshold for the flagged list.")
     parser.add_argument("--thresholds", default=None, help="JSON file of per-class thresholds.")
     parser.add_argument(
@@ -115,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
     except (
         digitizer.DigitizerNotFound,
         digitizer.DigitizerFailed,
+        devices.DeviceError,
+        devices.DeviceUnavailable,
         preprocess.DuplicateRecordName,
         FileNotFoundError,
     ) as exc:

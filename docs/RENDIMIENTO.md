@@ -258,10 +258,11 @@ cambiar la calidad de la digitalización: las salidas son idénticas y la resolu
 - Hilos: configurables, por defecto las CPU disponibles con tope de 8.
 - Digitalizador persistente por defecto, con el subproceso como alternativa.
 
-Siguiente ahorro medido pero no aplicado: el PNG de depuración que escribe el digitalizador
-cuesta de 5,3 a 6 s por imagen, un 12 % del estudio, y no lo lee nadie: api-EKG no lo usa y el
-pipeline solo lo borra. Pasar `DATA.save_mode` a `timeseries_only` no toca el CSV ni los
-metadatos; se deja fuera porque elimina un artefacto que alguien podría estar mirando a mano.
+Siguiente ahorro medido pero no aplicado por defecto: el PNG de depuración que escribe el
+digitalizador cuesta de 5,3 a 6 s por imagen, un 12 % del estudio, y no lo lee nadie: api-EKG
+no lo usa y el pipeline solo lo borra. Pasar `DATA.save_mode` a `timeseries_only` no toca el
+CSV ni los metadatos. Sigue activo por defecto porque alguien podría estar mirándolo a mano;
+`ECG_DIGITIZER_DEBUG_PNG=0` lo desactiva por despliegue.
 
 No medido:
 
@@ -272,3 +273,33 @@ No medido:
 - La validación completa del subconjunto con la configuración final. No hace falta para la
   calidad, porque los CSV salen idénticos en ambos modos y la resolución no cambió, pero no
   se corrió.
+
+## 7. GPU
+
+Medido en Colab con una GPU T4 con `scripts/medir_gpu_colab.ipynb` (PR #16), sobre las 24
+imágenes del estudio de escalas (sección 2), con resolución 3000, modo persistente y sin PNG
+de depuración. La CPU de referencia es la de la misma máquina de Colab, no la de este Mac.
+
+| Configuración | Tiempo por estudio |
+|---|---:|
+| CPU de Colab | unos 95 s |
+| GPU T4, en caliente | unos 17 s |
+| GPU T4, primer estudio (en frío) | unos 26 s |
+
+La calidad de la digitalización en GPU es idéntica a la de CPU en las 24 de 24 imágenes.
+
+Cómo se activa: `ECG_DEVICE=cuda` y nada más. El pipeline genera una copia de
+`configs/digitizer_cpu.yml` con `MODEL.KWARGS.device` y
+`MODEL.KWARGS.config.LAYOUT_IDENTIFIER.KWARGS.device` en `cuda` (en el directorio temporal
+del sistema, con un hash del contenido en el nombre) y se la pasa al digitalizador, en modo
+persistente o subproceso; ECGFounder recibe el mismo dispositivo. Con `cpu` se usa el archivo
+del repositorio sin tocarlo. Si se pide `cuda` y torch no ve la GPU, `pipeline.run` falla
+antes de leer la primera imagen con `DeviceUnavailable`, y el worker de api-EKG al arrancar.
+
+No medido todavía:
+
+- El pipeline con esta integración en una GPU real: el notebook cambiaba la configuración a
+  mano y usaba torch 2.3.1 con CUDA 12.1; la imagen GPU de api-EKG usa torch 2.2.2 con CUDA
+  12.1, el mismo torch que la imagen CPU. Conviene correr `scripts/integration_check.py` con
+  `ECG_DEVICE=cuda` en la primera máquina con GPU.
+- La memoria de GPU con dos workers en la misma tarjeta.
