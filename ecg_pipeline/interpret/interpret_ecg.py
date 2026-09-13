@@ -56,6 +56,7 @@ import torch
 
 # Re-exported deliberately: these were defined here before ``waveform.py`` existed, and
 # callers (including the test suite) import them from this module.
+from ecg_pipeline import threads
 from ecg_pipeline.interpret import PATHWAYS
 from ecg_pipeline.interpret.net1d import Net1D  # vendored from ECGFounder (MIT); see NOTICE
 from ecg_pipeline.interpret.representative_beat import representative_beat, residual_desync_ms, tile_to_length
@@ -223,6 +224,8 @@ def build_12lead_montage(
 
 
 def _build_model(kwargs: dict[str, Any], ckpt_path: str, device: str) -> Net1D:
+    # Before the first op runs: ECG_TORCH_THREADS, or a bounded default (see threads.py).
+    threads.apply_to_torch()
     model = Net1D(**kwargs)
     # ``weights_only=False`` is explicit rather than left to the default, because the default
     # flips to True in torch 2.6 and these checkpoints do not load under it: alongside the

@@ -42,6 +42,20 @@ The digitizer needs its own dependencies (`pip install -r $OPEN_ECG_DIGITIZER_HO
 It can share this virtualenv or use its own, if separate, pass the interpreter through
 `digitize(python_exe=...)`.
 
+### Speed settings
+
+Three environment variables, all optional. Measurements and the reasoning behind each
+default are in [docs/RENDIMIENTO.md](docs/RENDIMIENTO.md).
+
+| variable | default | what it does |
+|---|---|---|
+| `ECG_DIGITIZER_MODE` | `persistent` | `persistent` keeps one digitizer process (`src.serve`, from `patches/0004`) alive with its models loaded across studies; `subprocess` launches `python -m src.digitize` per call. Both are separate processes, so the licensing boundary is the same. |
+| `ECG_DIGITIZER_RESAMPLE_SIZE` | `MODEL.KWARGS.resample_size` in `configs/digitizer_cpu.yml` | Long side, in pixels, the segmentation works at. Larger images are downscaled (bilinear, antialiased) to it; smaller ones are left alone. |
+| `ECG_TORCH_THREADS` | CPUs available, capped at 8 | Intra-op threads for torch, in the digitizer process and for ECGFounder. |
+
+The persistent digitizer holds its models in memory between studies. Where that resident
+memory is not affordable, use `ECG_DIGITIZER_MODE=subprocess`.
+
 ## Usage
 
 ```bash

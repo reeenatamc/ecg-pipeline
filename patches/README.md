@@ -111,3 +111,26 @@ would be the fix for the variance itself, and belongs upstream.
 **This one does not belong upstream as-is.** Seeding from the image is a choice about
 which of several answers you keep, and upstream should decide that for itself. What does
 belong upstream is the report: unseeded sampling makes the digitizer irreproducible.
+
+## `0004-digitizer-persistent-server.patch`
+
+Adds one new file, **`src/serve.py`**, and changes none. It does not change digitization
+behaviour: it is a second entry point next to `python -m src.digitize` that loads the
+models once and then digitizes one image directory per request, read as a JSON line on
+stdin and answered as a JSON line on stdout. Each request goes through the same config
+merge, the same `process_one_file` (so the same per-image seed from `0003`) and the same
+output writers as the command line.
+
+`ecg_pipeline.digitizer` uses it in its default `persistent` mode, still as a separate
+process, so the licensing boundary in that module is unchanged. What it saves is the
+imports and weight loading on every study; see `docs/RENDIMIENTO.md` for the measurement.
+Requests may change the lead-layout file and `MODEL.KWARGS.resample_size` without a reload;
+any other model setting rebuilds the models for that request.
+
+Something like it could belong upstream as a batch or service mode, but the protocol here
+is shaped by how this project calls the digitizer, so it is not written as a PR.
+
+Apply manually with:
+
+    cd "$OPEN_ECG_DIGITIZER_HOME"
+    git apply /path/to/patches/0004-digitizer-persistent-server.patch

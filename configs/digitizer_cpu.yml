@@ -59,6 +59,10 @@ MODEL:
           possibly_flipped: false
 
     device: 'cpu'
+    # Long side the segmentation works at; larger images are downscaled to it, smaller ones
+    # left alone. Measured against the PTB-XL validation (docs/RENDIMIENTO.md): 2000 already
+    # loses 0.9 dB and misattributes a rhythm strip, 1600 loses 3.5 dB. Keep 3000, which leaves
+    # today's 2200 to 2400 px images at native size. ECG_DIGITIZER_RESAMPLE_SIZE overrides it.
     resample_size: 3000
     rotate_on_resample: true
     enable_timing: true

@@ -68,10 +68,14 @@ class TestLeadLayoutOverride(unittest.TestCase):
 
 
 class TestDigitizeArguments(unittest.TestCase):
-    """digitize() shells out; these check what it would run, not the run itself."""
+    """digitize() shells out; these check what it would run, not the run itself.
+
+    Subprocess mode throughout: persistent mode is covered in test_digitizer_modes.py.
+    """
 
     def _run_capture(self, **kwargs):
         images, out = tempfile.mkdtemp(), tempfile.mkdtemp()
+        kwargs.setdefault("mode", digitizer.MODE_SUBPROCESS)
         with mock.patch("ecg_pipeline.digitizer.subprocess.run") as run:
             run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
             digitizer.digitize(image_dir=images, output_dir=out, home=Path(fake_checkout()), quiet=True, **kwargs)
@@ -101,7 +105,13 @@ class TestDigitizeArguments(unittest.TestCase):
         with mock.patch("ecg_pipeline.digitizer.subprocess.run") as run:
             run.return_value = mock.Mock(returncode=2, stdout="", stderr="boom")
             with self.assertRaises(digitizer.DigitizerFailed) as ctx:
-                digitizer.digitize(image_dir=images, output_dir=out, home=Path(fake_checkout()), quiet=True)
+                digitizer.digitize(
+                    image_dir=images,
+                    output_dir=out,
+                    home=Path(fake_checkout()),
+                    quiet=True,
+                    mode=digitizer.MODE_SUBPROCESS,
+                )
 
         self.assertIn("boom", str(ctx.exception))
 
