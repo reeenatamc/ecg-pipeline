@@ -57,7 +57,7 @@ def run_digitize_only(out_dir: Path) -> dict[str, Any]:
         "--json",
         "--quiet",
     ]
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True)
+    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True)  # noqa: S603 - fixed argv, no shell
     # Exit 2 is --fail-on-degraded, never passed here; the pipeline itself only ever exits
     # 0 or 1, and 1 covers "every image failed", which a missing/unreadable result below
     # already reports on its own terms.

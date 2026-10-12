@@ -142,7 +142,7 @@ class TestDigitizeOnlyGates(PipelineRunCase):
             "from ecg_pipeline.interpret.waveform import assess_quality, load_canonical_csv; "
             "print('torch' in sys.modules)"
         )
-        finished = subprocess.run(
+        finished = subprocess.run(  # noqa: S603 - argv is sys.executable plus a literal probe
             [sys.executable, "-c", probe],
             capture_output=True,
             text=True,
