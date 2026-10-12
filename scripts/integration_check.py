@@ -151,7 +151,7 @@ def compare(expected_csv: Path, expected_layout: str, actual_csv: Path, actual_l
 def print_table(rows: list[tuple]) -> None:
     widths = [max(len(str(row[i])) for row in rows) for i in range(len(rows[0]))]
     for row in rows:
-        print("  ".join(str(cell).ljust(w) for cell, w in zip(row, widths)))
+        print("  ".join(str(cell).ljust(w) for cell, w in zip(row, widths, strict=True)))
 
 
 def update_reference() -> None:
