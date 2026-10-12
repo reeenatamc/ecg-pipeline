@@ -61,9 +61,7 @@ from ecg_pipeline.interpret import PATHWAYS
 from ecg_pipeline.interpret.net1d import Net1D  # vendored from ECGFounder (MIT); see NOTICE
 from ecg_pipeline.interpret.representative_beat import representative_beat, residual_desync_ms, tile_to_length
 from ecg_pipeline.interpret.waveform import (
-    CANONICAL_FS,
     CANONICAL_LEADS,
-    PREFERRED_RHYTHM_LEADS,
     STANDARD_3X4_COLUMNS,
     assess_quality,
     clean_lead,
