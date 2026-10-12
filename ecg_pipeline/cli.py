@@ -1,8 +1,8 @@
 """Command-line entry point for the ECG pipeline.
 
-    python -m ecg_pipeline --images path/to/images --out path/to/output
-    python -m ecg_pipeline --images in/ --out out/ --pathway 1lead --lead II
-    python -m ecg_pipeline --images in/ --out out/ --digitize-only
+python -m ecg_pipeline --images path/to/images --out path/to/output
+python -m ecg_pipeline --images in/ --out out/ --pathway 1lead --lead II
+python -m ecg_pipeline --images in/ --out out/ --digitize-only
 """
 
 from __future__ import annotations
