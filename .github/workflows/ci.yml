@@ -19,8 +19,8 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
-  lint:
-    name: Lint
+  compile:
+    name: Compile
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -30,18 +30,9 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
 
-      - name: Install linters
-        run: pip install black==24.1.1 isort==5.13.2
-
       - name: Byte-compile every module
         # Cheap syntax check that needs none of the runtime dependencies.
         run: find ecg_pipeline tests -name '*.py' -print0 | xargs -0 python -m py_compile
-
-      - name: black
-        run: black --check --diff .
-
-      - name: isort
-        run: isort --check-only --diff .
 
   test:
     name: Test

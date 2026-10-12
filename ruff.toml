@@ -1,0 +1,17 @@
+target-version = "py310"
+line-length = 120
+# net1d.py is vendored ECGFounder source; notebooks and docs are not linted here.
+extend-exclude = ["ecg_pipeline/interpret/net1d.py", "*.ipynb", "*.md"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "S", "BLE"]
+ignore = [
+  "E501",    # long lines are left to the formatter
+  "UP042",   # str+Enum -> StrEnum changes str() output
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "SIM117"]
+
+[format]
+quote-style = "double"
