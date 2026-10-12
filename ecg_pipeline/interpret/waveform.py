@@ -112,7 +112,7 @@ def load_canonical_csv(path: str) -> tuple[npt.NDArray[np.float64], list[str]]:
     Returns (signal, lead_names) with signal shaped (n_leads, n_samples). Missing
     samples (leads outside their printed window) are NaN, as written by the digitizer.
     """
-    with open(path, "r") as fin:
+    with open(path) as fin:
         header = fin.readline().strip().split(",")
     data = np.genfromtxt(path, delimiter=",", skip_header=1)
     if data.ndim == 1:
