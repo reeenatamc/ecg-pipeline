@@ -134,12 +134,12 @@ MODEL_KWARGS_12LEAD = dict(in_channels=12, **_COMMON_KWARGS)
 
 def load_tasks(path: str = TASKS_PATH) -> list[str]:
     """The 150 diagnostic class names, index-aligned to the model's output logits."""
-    with open(path, "r") as fin:
+    with open(path) as fin:
         return [line.strip() for line in fin if line.strip()]
 
 
 def load_thresholds(path: str) -> dict[str, float]:
-    with open(path, "r") as fin:
+    with open(path) as fin:
         return {str(k): float(v) for k, v in json.load(fin).items()}
 
 
