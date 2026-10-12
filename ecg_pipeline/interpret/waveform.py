@@ -160,18 +160,18 @@ def assess_quality(
     all, which every pathway needs.
     """
     info = lead_windows(canonical, names)
-    full = [l for l in CANONICAL_LEADS if l in info and info[l]["coverage"] >= coverage_min]
+    full = [lead for lead in CANONICAL_LEADS if lead in info and info[lead]["coverage"] >= coverage_min]
     # Every full-length lead, preferred ones first -- what is AVAILABLE, reported below as
     # ``full_length_leads`` regardless of which of them actually get used. Not the same list
     # as ``selected``: see below.
-    full_ordered = [l for l in PREFERRED_RHYTHM_LEADS if l in full] + [
-        l for l in full if l not in PREFERRED_RHYTHM_LEADS
+    full_ordered = [lead for lead in PREFERRED_RHYTHM_LEADS if lead in full] + [
+        lead for lead in full if lead not in PREFERRED_RHYTHM_LEADS
     ]
-    preferred_full = [l for l in PREFERRED_RHYTHM_LEADS if l in full]
+    preferred_full = [lead for lead in PREFERRED_RHYTHM_LEADS if lead in full]
 
     # A lead with no samples at all is not a fallback candidate: selecting it would only
     # push the failure downstream into clean_lead as an "entirely NaN" error.
-    with_signal = {l: v for l, v in info.items() if v["coverage"] > 0}
+    with_signal = {lead: v for lead, v in info.items() if v["coverage"] > 0}
 
     warnings: list[str] = []
     gates: list[str] = []
@@ -184,7 +184,7 @@ def assess_quality(
         # fold-10 derivation) dilutes every morphology class in that average if it is
         # averaged in alongside a preferred lead. See configs/thresholds/README.md.
         selected = preferred_full
-        omitted = [l for l in full if l not in preferred_full]
+        omitted = [lead for lead in full if lead not in preferred_full]
         if omitted:
             plural = len(omitted) > 1
             warnings.append(
@@ -204,7 +204,7 @@ def assess_quality(
         # full-length strip is a legitimate rhythm-strip reading, whichever lead it is.
         selected = full_ordered
     elif with_signal:
-        selected = [max(with_signal, key=lambda l: with_signal[l]["coverage"])]
+        selected = [max(with_signal, key=lambda lead: with_signal[lead]["coverage"])]
         if needs_full_length:
             degraded = True
             gates.append(GATE_NO_FULL_LENGTH_LEAD)
@@ -226,7 +226,7 @@ def assess_quality(
     # the right-sided ECG matched a 6-lead `precordial_3x2` at a cost indistinguishable from
     # a correct match, and only the missing six give it away. Naming them is the whole point
     # -- "9 of 12" on a 3x3 print is expected, "6 of 12" on a 3x4 is a wrong layout.
-    missing = [l for l in CANONICAL_LEADS if l not in with_signal]
+    missing = [lead for lead in CANONICAL_LEADS if lead not in with_signal]
     if info and missing:
         warnings.append(
             f"Only {len(usable)} of 12 leads carry any signal ({', '.join(usable) or 'none'}); "
@@ -236,7 +236,7 @@ def assess_quality(
         )
 
     return {
-        "coverage": {l: round(info[l]["coverage"], 3) for l in info},
+        "coverage": {lead: round(info[lead]["coverage"], 3) for lead in info},
         "leads_with_signal": usable,
         "leads_missing": missing,
         "full_length_leads": full_ordered,

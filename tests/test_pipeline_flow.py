@@ -167,7 +167,7 @@ class TestLayoutTemplateGates(PipelineRunCase):
     def test_fewer_leads_than_the_template_defines_degrades(self):
         # case_10: cabrera_6x1_limb defines 6 leads, only 5 came back with signal.
         self.add_image("case_10")
-        coverage = {l: 1.0 for l in ("I", "II", "III", "aVR", "aVL")}  # aVF missing
+        coverage = {lead: 1.0 for lead in ("I", "II", "III", "aVR", "aVL")}  # aVF missing
 
         results = self.run_pipeline({"case_10": coverage}, {"case_10": "cabrera_6x1_limb"})
 
@@ -181,7 +181,9 @@ class TestLayoutTemplateGates(PipelineRunCase):
         # and gate 4 itself must add nothing since nothing is missing from the template.
         self.add_image("infarct")
 
-        results = self.run_pipeline({"infarct": {l: 1.0 for l in ("I", "II", "III")}}, {"infarct": "standard_3x1"})
+        results = self.run_pipeline(
+            {"infarct": {lead: 1.0 for lead in ("I", "II", "III")}}, {"infarct": "standard_3x1"}
+        )
 
         self.assertFalse(results[0]["degraded"])
         self.assertFalse(any("defines 3 lead" in w for w in results[0]["warnings"]))
@@ -191,7 +193,7 @@ class TestLayoutTemplateGates(PipelineRunCase):
         # length -- on a real 3x4 print only the wildcard strips (here landing on the
         # conventional II/V1/V5) ever reach full length; the other 9 are ~2.5s columns.
         self.add_image("normal")
-        coverage = {l: 0.25 for l in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
 
         results = self.run_pipeline({"normal": coverage}, {"normal": "standard_3x4_with_r3"})
 
@@ -202,7 +204,7 @@ class TestLayoutTemplateGates(PipelineRunCase):
 
     def test_an_unavailable_layout_definition_warns_without_degrading(self):
         self.add_image("ecg")
-        coverage = {l: 0.25 for l in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0}
 
         with mock.patch.object(pipeline, "_layout_definitions", return_value=None):
             results = self.run_pipeline({"ecg": coverage}, {"ecg": "standard_3x4_with_r3"})
@@ -214,7 +216,7 @@ class TestLayoutTemplateGates(PipelineRunCase):
         # afib_E000735-like: the wildcard strip on standard_3x4_with_r1 was identified as
         # aVF instead of the printed II.
         self.add_image("afib_E000735")
-        coverage = {l: 0.25 for l in CANONICAL_LEADS} | {"aVF": 1.0}
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"aVF": 1.0}
 
         results = self.run_pipeline({"afib_E000735": coverage}, {"afib_E000735": "standard_3x4_with_r1"})
 
@@ -224,7 +226,7 @@ class TestLayoutTemplateGates(PipelineRunCase):
 
     def test_a_conventional_rhythm_strip_does_not_degrade(self):
         self.add_image("afib_E000742")
-        coverage = {l: 0.25 for l in CANONICAL_LEADS} | {"II": 1.0}
+        coverage = {lead: 0.25 for lead in CANONICAL_LEADS} | {"II": 1.0}
 
         results = self.run_pipeline({"afib_E000742": coverage}, {"afib_E000742": "standard_3x4_with_r1"})
 
@@ -238,7 +240,7 @@ class TestLayoutTemplateGates(PipelineRunCase):
         # left out is a separate, non-degrading warning, not gate 5's "unverified" one.
         self.add_image("ecg")
 
-        results = self.run_pipeline({"ecg": {l: 1.0 for l in CANONICAL_LEADS}}, {"ecg": "standard_12x1"})
+        results = self.run_pipeline({"ecg": {lead: 1.0 for lead in CANONICAL_LEADS}}, {"ecg": "standard_12x1"})
 
         self.assertFalse(results[0]["degraded"])
         self.assertFalse(any("unverified" in w for w in results[0]["warnings"]))
