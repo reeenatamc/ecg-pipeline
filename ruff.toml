@@ -8,8 +8,6 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "S", "BLE"]
 ignore = [
   "E501",    # long lines are left to the formatter
   "UP042",   # str+Enum -> StrEnum changes str() output
-  # Held back until #19 is sorted out; removed in the follow-up PR.
-  "E741", "F401", "S101", "S603", "BLE001", "SIM105", "SIM115", "B905",
 ]
 
 [lint.per-file-ignores]

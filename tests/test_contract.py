@@ -205,14 +205,14 @@ class TestToSignal(unittest.TestCase):
         # The digitizer identifies leads by position, so on this layout the V4/V5/V6 slots
         # hold V4R/V5R/V6R. Showing them as left-sided would misreport which side of the
         # heart was recorded.
-        canonical, names = self.frame({l: 1.0 for l in ("I", "V4", "V5", "V6")})
+        canonical, names = self.frame({lead: 1.0 for lead in ("I", "V4", "V5", "V6")})
 
         signal = to_signal(canonical, names, FS, lead_layout="limb_aug_right_3x3")
 
         self.assertEqual([lead["name"] for lead in signal["leads"]], ["I", "V4R", "V5R", "V6R"])
 
     def test_a_standard_layout_keeps_its_lead_names(self):
-        canonical, names = self.frame({l: 1.0 for l in ("I", "V4", "V5", "V6")})
+        canonical, names = self.frame({lead: 1.0 for lead in ("I", "V4", "V5", "V6")})
 
         signal = to_signal(canonical, names, FS, lead_layout="standard_3x4_with_r3")
 

@@ -217,6 +217,21 @@ class TestPersistentMode(unittest.TestCase):
         digitizer.close_persistent_digitizer()
         self.assertFalse(server.alive)
 
+    def test_a_restart_closes_the_previous_stderr_file(self):
+        self.digitize(image_dir())
+        first = self.server()._stderr
+        with self.assertRaises(digitizer.DigitizerFailed):
+            self.digitize(image_dir("crash"))
+        self.digitize(image_dir())
+        self.assertTrue(first.closed)
+
+    def test_a_failed_launch_does_not_leave_the_stderr_file_open(self):
+        server = self.server()
+        with mock.patch.object(digitizer.subprocess, "Popen", side_effect=OSError("no such python")):
+            with self.assertRaises(OSError):
+                server.run({"DATA.images_path": "x", "DATA.output_path": "y"})
+        self.assertIsNone(server._stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

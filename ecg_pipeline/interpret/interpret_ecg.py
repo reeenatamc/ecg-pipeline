@@ -61,9 +61,7 @@ from ecg_pipeline.interpret import PATHWAYS
 from ecg_pipeline.interpret.net1d import Net1D  # vendored from ECGFounder (MIT); see NOTICE
 from ecg_pipeline.interpret.representative_beat import representative_beat, residual_desync_ms, tile_to_length
 from ecg_pipeline.interpret.waveform import (
-    CANONICAL_FS,
     CANONICAL_LEADS,
-    PREFERRED_RHYTHM_LEADS,
     STANDARD_3X4_COLUMNS,
     assess_quality,
     clean_lead,
@@ -186,9 +184,13 @@ def build_12lead_montage(
 
     col_window: dict[int, tuple[int, int]] = {}
     for ci, leads in enumerate(STANDARD_3X4_COLUMNS):
-        cand = [l for l in leads if l in info and info[l]["span"] and info[l]["coverage"] <= partial_coverage_max]
+        cand = [
+            lead
+            for lead in leads
+            if lead in info and info[lead]["span"] and info[lead]["coverage"] <= partial_coverage_max
+        ]
         if cand:
-            best = max(cand, key=lambda l: info[l]["span"][1] - info[l]["span"][0])
+            best = max(cand, key=lambda lead: info[lead]["span"][1] - info[lead]["span"][0])
             col_window[ci] = info[best]["span"]
         else:
             col_window[ci] = (ci * nominal, min((ci + 1) * nominal, n) - 1)
@@ -364,7 +366,7 @@ def interpret_rhythm(
     for lead in leads:
         signal = zscore(clean_lead(extract_lead(canonical, names, lead)))
         per_lead[lead] = predict_probs(model, signal, device)
-    stack = np.stack([per_lead[l] for l in leads])
+    stack = np.stack([per_lead[lead] for lead in leads])
     combined = stack.max(axis=0) if method == "max" else stack.mean(axis=0)
     return combined, per_lead, leads
 
@@ -434,7 +436,7 @@ def interpret_csv(
         detail: dict[str, Any] = {
             "rhythm_leads": leads,
             "combine": combine,
-            "per_lead_topk": {l: top_k(per_lead[l], tasks, 5) for l in leads},
+            "per_lead_topk": {lead: top_k(per_lead[lead], tasks, 5) for lead in leads},
         }
     elif pathway == "1lead":
         ckpt = ckpt or DEFAULT_1LEAD_CKPT

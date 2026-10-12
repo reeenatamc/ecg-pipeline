@@ -33,6 +33,7 @@ that copy. With ``cpu`` the config is passed through untouched, exactly as befor
 from __future__ import annotations
 
 import atexit
+import contextlib
 import hashlib
 import json
 import os
@@ -236,21 +237,34 @@ class PersistentDigitizer:
         return [self.python_exe, "-u", "-m", "src.serve", "--config", str(self.config)]
 
     def _start(self) -> None:
-        self._stderr = tempfile.TemporaryFile(mode="w+", prefix="ecg-digitizer-serve-")
-        self._proc = subprocess.Popen(
-            self._command(),
-            cwd=str(self.home),
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=self._stderr,
-            text=True,
-            env=threads.child_env(),
-        )
+        # A restart comes through here with the previous run's stderr file still open.
+        self._close_stderr()
+        # Closed by _close_stderr(), on the next start and in close(); not a with block.
+        self._stderr = tempfile.TemporaryFile(mode="w+", prefix="ecg-digitizer-serve-")  # noqa: SIM115
+        try:
+            # argv is a list built from configured paths and runs without a shell.
+            self._proc = subprocess.Popen(  # noqa: S603
+                self._command(),
+                cwd=str(self.home),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=self._stderr,
+                text=True,
+                env=threads.child_env(),
+            )
+        except BaseException:
+            self._close_stderr()
+            raise
         self.starts += 1
         ready = self._read_message()
         if ready.get("event") != "ready":
             raise self._failure(f"Persistent digitizer sent {ready!r} instead of its ready message.")
         self.load_seconds = ready.get("load_seconds")
+
+    def _close_stderr(self) -> None:
+        if self._stderr is not None:
+            self._stderr.close()
+            self._stderr = None
 
     def _stderr_tail(self, limit: int = 4000) -> str:
         if self._stderr is None:
@@ -273,7 +287,8 @@ class PersistentDigitizer:
         )
 
     def _read_message(self) -> dict[str, Any]:
-        assert self._proc is not None and self._proc.stdout is not None
+        if self._proc is None or self._proc.stdout is None:
+            raise self._failure("Persistent digitizer has no stdout pipe.")
         line = self._proc.stdout.readline()
         if not line:
             raise self._failure("Persistent digitizer exited unexpectedly.")
@@ -290,7 +305,8 @@ class PersistentDigitizer:
         with self._lock:
             if not self.alive:
                 self._start()
-            assert self._proc is not None and self._proc.stdin is not None
+            if self._proc is None or self._proc.stdin is None:
+                raise self._failure("Persistent digitizer has no stdin pipe.")
             self._next_id += 1
             request_id = self._next_id
             try:
@@ -315,25 +331,21 @@ class PersistentDigitizer:
                 if proc.poll() is None:
                     try:
                         # EOF on stdin is the server's signal to exit.
-                        assert proc.stdin is not None
-                        proc.stdin.close()
+                        if proc.stdin is not None:
+                            proc.stdin.close()
                         proc.wait(timeout=10)
                     except (OSError, subprocess.TimeoutExpired):
                         proc.kill()
                         proc.wait()
                 _close_pipes(proc)
-            if self._stderr is not None:
-                self._stderr.close()
-                self._stderr = None
+            self._close_stderr()
 
 
 def _close_pipes(proc: subprocess.Popen[str]) -> None:
     for stream in (proc.stdin, proc.stdout):
         if stream is not None:
-            try:
+            with contextlib.suppress(OSError):
                 stream.close()
-            except OSError:
-                pass
 
 
 _persistent: PersistentDigitizer | None = None
@@ -420,7 +432,7 @@ def digitize(
         cmd = [python_exe, "-m", "src.digitize", "--config", str(config)]
         cmd += [f"{k}={v}" for k, v in merged.items()]
 
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 - list argv from configured paths, no shell
             cmd,
             cwd=str(home),
             capture_output=True,

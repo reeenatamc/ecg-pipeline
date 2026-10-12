@@ -126,7 +126,7 @@ class TestRepresentativeBeat(unittest.TestCase):
         # This is the number to quote when asked what the median is a median of.
         _, meta = representative_beat(*synthetic_3x4(), fs=FS)
 
-        grid_counts = {meta["beats_per_lead"][l] for l in ("I", "III", "V1", "V6")}
+        grid_counts = {meta["beats_per_lead"][lead] for lead in ("I", "III", "V1", "V6")}
         self.assertEqual(grid_counts, {3})
         self.assertEqual(meta["leads_without_a_beat"], [])
 

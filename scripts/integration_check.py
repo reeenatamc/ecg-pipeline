@@ -57,7 +57,7 @@ def run_digitize_only(out_dir: Path) -> dict[str, Any]:
         "--json",
         "--quiet",
     ]
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True)
+    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True)  # noqa: S603 - fixed argv, no shell
     # Exit 2 is --fail-on-degraded, never passed here; the pipeline itself only ever exits
     # 0 or 1, and 1 covers "every image failed", which a missing/unreadable result below
     # already reports on its own terms.
@@ -151,7 +151,7 @@ def compare(expected_csv: Path, expected_layout: str, actual_csv: Path, actual_l
 def print_table(rows: list[tuple]) -> None:
     widths = [max(len(str(row[i])) for row in rows) for i in range(len(rows[0]))]
     for row in rows:
-        print("  ".join(str(cell).ljust(w) for cell, w in zip(row, widths)))
+        print("  ".join(str(cell).ljust(w) for cell, w in zip(row, widths, strict=True)))
 
 
 def update_reference() -> None:

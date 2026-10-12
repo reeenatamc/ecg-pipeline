@@ -54,7 +54,9 @@ class TestLayoutDefinitions(LayoutFixtureCase):
         config_dir.mkdir(parents=True)
         (config_dir / "lead_layouts_all.yml").write_text("not: [valid: yaml: at: all")
         with mock.patch.object(digitizer, "digitizer_home", return_value=home):
-            self.assertIsNone(pipeline._layout_definitions())
+            with self.assertLogs("ecg_pipeline.pipeline", level="WARNING") as logs:
+                self.assertIsNone(pipeline._layout_definitions())
+        self.assertIn("templates unavailable", logs.output[0])
 
 
 class TestLayoutLeads(LayoutFixtureCase):

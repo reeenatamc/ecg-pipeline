@@ -145,22 +145,22 @@ def representative_beat(
     column_reference: dict[int, dict[str, Any]] = {}
 
     for column_index, column_leads in enumerate(STANDARD_3X4_COLUMNS):
-        present = [l for l in column_leads if l in names and info.get(l, {}).get("span")]
+        present = [lead for lead in column_leads if lead in names and info.get(lead, {}).get("span")]
         if not present:
             continue
 
         # The column's own time window: the widest span among its grid leads. A rhythm strip
         # printed in this column spans the whole paper and would not describe the column.
-        grid = [l for l in present if info[l]["coverage"] <= rhythm_coverage_min]
+        grid = [lead for lead in present if info[lead]["coverage"] <= rhythm_coverage_min]
         if grid:
-            start, end = info[max(grid, key=lambda l: info[l]["span"][1] - info[l]["span"][0])]["span"]
+            start, end = info[max(grid, key=lambda lead: info[lead]["span"][1] - info[lead]["span"][0])]["span"]
         else:
             start, end = column_index * nominal, min((column_index + 1) * nominal, canonical.shape[1]) - 1
 
-        segments = {l: interpolate_internal_nans(canonical[names.index(l)][start : end + 1]) for l in present}
+        segments = {lead: interpolate_internal_nans(canonical[names.index(lead)][start : end + 1]) for lead in present}
         # Fiducials come from the column's strongest signal and are valid for every lead in
         # it, including the ones too flat to time reliably on their own.
-        reference = max(segments, key=lambda l: float(np.ptp(np.nan_to_num(segments[l]))))
+        reference = max(segments, key=lambda lead: float(np.ptp(np.nan_to_num(segments[lead]))))
         column_peaks = detect_fiducials(segments[reference], fs)
         column_reference[column_index] = {"lead": reference, "beats_detected": int(column_peaks.size)}
 
@@ -187,7 +187,7 @@ def representative_beat(
         "fiducial_index": pre,
         "beats_per_lead": beats_per_lead,
         "column_reference": column_reference,
-        "leads_without_a_beat": [l for l in CANONICAL_LEADS if not beats_per_lead.get(l)],
+        "leads_without_a_beat": [lead for lead in CANONICAL_LEADS if not beats_per_lead.get(lead)],
     }
     return zscore(beat), meta
 

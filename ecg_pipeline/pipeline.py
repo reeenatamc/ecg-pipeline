@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import functools
 import json
+import logging
 import math
 import tempfile
 from pathlib import Path
@@ -22,6 +23,8 @@ import yaml
 from ecg_pipeline import devices, digitizer, preprocess
 from ecg_pipeline.digitizer import CANONICAL_SUFFIX
 from ecg_pipeline.interpret.waveform import CONVENTIONAL_STRIP_LEADS
+
+logger = logging.getLogger(__name__)
 
 INTERPRETATION_SUFFIX = "_interpretation.json"
 METADATA_FILENAME = "digitization_metadata.csv"
@@ -188,7 +191,8 @@ def _layout_definitions() -> dict[str, dict[str, Any]] | None:
             with OWN_LAYOUTS_PATH.open() as fh:
                 definitions.update(yaml.safe_load(fh) or {})
         return definitions
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - any failure means "no templates"; the caller fails soft
+        logger.warning("Lead-layout templates unavailable, layout checks are skipped: %s: %s", type(exc).__name__, exc)
         return None
 
 
@@ -413,7 +417,7 @@ def run(
             meta, prep = metadata.get(name), prepared.get(name)
             try:
                 quality = assess_quality(*load_canonical_csv(str(csv_path)))
-            except Exception as exc:  # a CSV too malformed to read is itself the finding
+            except Exception as exc:  # noqa: BLE001 - a CSV too malformed to read is itself the finding
                 quality = {"degraded": True, "warnings": [f"Could not read the digitized CSV: {exc}"]}
             result = {
                 "record": name,
@@ -471,7 +475,7 @@ def run(
                 flat_threshold=flat_threshold,
                 model=model,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - one bad record must not abort the batch
             result = {"source_csv": str(csv_path), "error": f"{type(exc).__name__}: {exc}"}
 
         # Digitization problems come first: they invalidate everything downstream.

@@ -34,7 +34,7 @@ def frame(coverage: dict[str, float]) -> tuple[np.ndarray, list[str]]:
 
 class TestAssessQuality(unittest.TestCase):
     def test_full_length_rhythm_strips_are_not_degraded(self):
-        canonical, names = frame({l: 0.25 for l in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0})
+        canonical, names = frame({lead: 0.25 for lead in CANONICAL_LEADS} | {"II": 1.0, "V1": 1.0, "V5": 1.0})
         q = assess_quality(canonical, names)
 
         self.assertFalse(q["degraded"])
@@ -51,7 +51,7 @@ class TestAssessQuality(unittest.TestCase):
         # A print whose only strip is V1 (no II, no V5 reaching full length) must still be
         # readable: assess_quality falls back to every full-length lead when none of the
         # preferred ones is present, which is exactly what a V1-only strip is.
-        canonical, names = frame({l: 0.25 for l in CANONICAL_LEADS} | {"V1": 1.0})
+        canonical, names = frame({lead: 0.25 for lead in CANONICAL_LEADS} | {"V1": 1.0})
         q = assess_quality(canonical, names)
 
         self.assertFalse(q["degraded"])
@@ -64,7 +64,7 @@ class TestAssessQuality(unittest.TestCase):
         # Same fallback as V1-only, for a lead that is not even a conventional strip lead
         # (gate 5 in pipeline.py is what flags that separately; assess_quality itself just
         # reads whatever full-length signal exists).
-        canonical, names = frame({l: 0.25 for l in CANONICAL_LEADS} | {"aVF": 1.0})
+        canonical, names = frame({lead: 0.25 for lead in CANONICAL_LEADS} | {"aVF": 1.0})
         q = assess_quality(canonical, names)
 
         self.assertFalse(q["degraded"])
@@ -93,7 +93,7 @@ class TestAssessQuality(unittest.TestCase):
     def test_no_full_length_lead_degrades_and_warns(self):
         """The regression this suite exists for: a 2.5 s fragment must not pass as a
         rhythm-strip ensemble."""
-        canonical, names = frame({l: 0.25 for l in CANONICAL_LEADS} | {"V2": 0.52})
+        canonical, names = frame({lead: 0.25 for lead in CANONICAL_LEADS} | {"V2": 0.52})
         q = assess_quality(canonical, names)
 
         self.assertTrue(q["degraded"])
@@ -119,7 +119,7 @@ class TestAssessQuality(unittest.TestCase):
         reporting 'Unknown layout' -- it matched a 6-lead precordial_3x2 at a cost
         indistinguishable from a correct match. The six absent leads are what give it away,
         so the threshold is any missing lead, not a handful."""
-        canonical, names = frame({l: 0.98 for l in ("V1", "V2", "V3", "V4", "V5", "V6")})
+        canonical, names = frame({lead: 0.98 for lead in ("V1", "V2", "V3", "V4", "V5", "V6")})
         q = assess_quality(canonical, names)
 
         self.assertFalse(q["degraded"])  # the coverage gate has no complaint; that is the point
@@ -132,7 +132,7 @@ class TestAssessQuality(unittest.TestCase):
         """A 3x3 print has no rhythm strip at all, by construction. Reading its morphology
         off ~2.5 s column windows is what the representative beat does on purpose, so the
         rhythm pathway's complaint must not travel with it."""
-        canonical, names = frame({l: 0.33 for l in CANONICAL_LEADS})
+        canonical, names = frame({lead: 0.33 for lead in CANONICAL_LEADS})
 
         rhythm = assess_quality(canonical, names)
         morphology = assess_quality(canonical, names, needs_full_length=False)
@@ -148,14 +148,14 @@ class TestAssessQuality(unittest.TestCase):
         self.assertTrue(assess_quality(canonical, names, needs_full_length=False)["degraded"])
 
     def test_lead_completeness_applies_to_every_pathway(self):
-        canonical, names = frame({l: 0.33 for l in ("V1", "V2", "V3", "V4", "V5", "V6")})
+        canonical, names = frame({lead: 0.33 for lead in ("V1", "V2", "V3", "V4", "V5", "V6")})
 
         q = assess_quality(canonical, names, needs_full_length=False)
 
         self.assertTrue(any("Only 6 of 12" in w for w in q["warnings"]))
 
     def test_a_complete_digitization_says_nothing_about_lead_count(self):
-        canonical, names = frame({l: 0.25 for l in CANONICAL_LEADS} | {"II": 1.0})
+        canonical, names = frame({lead: 0.25 for lead in CANONICAL_LEADS} | {"II": 1.0})
         q = assess_quality(canonical, names)
 
         self.assertEqual(q["leads_missing"], [])
